@@ -14,16 +14,21 @@ import java.io.IOException
 
 private val Context.destinationDataStore by preferencesDataStore(name = "destination")
 
-class DestinationStore(private val dataStore: DataStore<Preferences>) {
+interface DestinationRepository {
+    val destinationTreeUri: Flow<String?>
+    suspend fun setDestination(uri: String)
+}
+
+class DestinationStore(private val dataStore: DataStore<Preferences>) : DestinationRepository {
     constructor(context: Context) : this(context.applicationContext.destinationDataStore)
 
-    val destinationTreeUri: Flow<String?> = dataStore.data
+    override val destinationTreeUri: Flow<String?> = dataStore.data
         .catch { exception ->
             if (exception is IOException) emit(emptyPreferences()) else throw exception
         }
         .map { preferences -> preferences[DESTINATION_TREE_URI] }
 
-    suspend fun setDestination(uri: String) {
+    override suspend fun setDestination(uri: String) {
         dataStore.edit { preferences -> preferences[DESTINATION_TREE_URI] = uri }
     }
 
