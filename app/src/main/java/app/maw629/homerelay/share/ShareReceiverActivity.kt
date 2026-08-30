@@ -3,14 +3,19 @@ package app.maw629.homerelay.share
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.lifecycle.lifecycleScope
 import app.maw629.homerelay.HomeRelayApplication
+import app.maw629.homerelay.ui.theme.HomeRelayTheme
 import java.util.UUID
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
@@ -56,15 +61,20 @@ sealed interface ShareQueueStatus {
 
 @Composable
 private fun ShareQueueScreen(status: ShareQueueStatus) {
-    MaterialTheme {
-        Text(
-            when (status) {
-                ShareQueueStatus.Preparing -> "Preparing files for Home Relay"
-                is ShareQueueStatus.Queued -> "Queued ${status.count} ${if (status.count == 1) "file" else "files"} for Home Relay"
-                ShareQueueStatus.DestinationMissing -> "Choose a destination in Home Relay before sharing files"
-                ShareQueueStatus.SourceUnreadable -> "A shared file could not be read"
-                ShareQueueStatus.StorageFull -> "Not enough storage to queue shared files"
-            }
-        )
+    HomeRelayTheme {
+        Surface(
+            modifier = Modifier.fillMaxSize().testTag("share-queue-surface"),
+            color = MaterialTheme.colorScheme.background
+        ) {
+            Text(
+                when (status) {
+                    ShareQueueStatus.Preparing -> "Preparing files for Home Relay"
+                    is ShareQueueStatus.Queued -> "Queued ${status.count} ${if (status.count == 1) "file" else "files"} for Home Relay"
+                    ShareQueueStatus.DestinationMissing -> "Choose a destination in Home Relay before sharing files"
+                    ShareQueueStatus.SourceUnreadable -> "A shared file could not be read"
+                    ShareQueueStatus.StorageFull -> "Not enough storage to queue shared files"
+                }
+            )
+        }
     }
 }
