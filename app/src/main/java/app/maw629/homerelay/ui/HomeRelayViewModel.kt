@@ -88,7 +88,7 @@ class HomeRelayViewModel(
                 }
                 destinationError.value = null
             } else {
-                if (acquiredGrant) {
+                if (acquiredGrant && previousUri != uri.toString()) {
                     runCatching { permissionTaker.releasePersistableUriPermission(uri) }
                 }
                 destinationError.value =

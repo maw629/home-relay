@@ -96,10 +96,26 @@ class HomeRelayViewModelTest {
     }
 
     @Test
+    fun failedValidationOfTheStoredUriRetainsItsExistingGrant() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val storedUri = "content://old/tree/drive"
+        val store = FakeDestinationRepository(storedUri)
+        val permissionTaker = RecordingPermissionTaker(retainedGrant = storedUri)
+        val viewModel = viewModel(store, FakeDestinationGateway(DestinationResult.AccessLost))
+
+        viewModel.selectDestination(Uri.parse(storedUri), permissionTaker)
+        advanceUntilIdle()
+
+        assertEquals(storedUri, store.currentDestination)
+        assertEquals(setOf(storedUri), permissionTaker.retainedGrants)
+        assertEquals(listOf("take:$storedUri"), permissionTaker.operations)
+    }
+
+    @Test
     fun successfulReplacementReleasesThePreviousGrantAfterPersistence() = runTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val store = FakeDestinationRepository("content://old")
-        val permissionTaker = RecordingPermissionTaker { store.currentDestination }
+        val permissionTaker = RecordingPermissionTaker(destination = { store.currentDestination })
         val viewModel = viewModel(store, FakeDestinationGateway(DestinationResult.Success))
 
         viewModel.selectDestination(Uri.parse("content://new/tree/drive"), permissionTaker)
@@ -121,17 +137,21 @@ class HomeRelayViewModelTest {
         )
 
     private class RecordingPermissionTaker(
-        private val destination: (() -> String?)? = null
+        private val destination: (() -> String?)? = null,
+        retainedGrant: String? = null
     ) : PersistableUriPermissionTaker {
         val operations = mutableListOf<String>()
         val destinationWhenReleased = mutableListOf<String?>()
+        val retainedGrants = retainedGrant?.let(::setOf)?.toMutableSet() ?: mutableSetOf()
 
         override fun takePersistableUriPermission(uri: Uri) {
             operations += "take:$uri"
+            retainedGrants += uri.toString()
         }
 
         override fun releasePersistableUriPermission(uri: Uri) {
             operations += "release:$uri"
+            retainedGrants -= uri.toString()
             destination?.let { destinationWhenReleased += it() }
         }
     }

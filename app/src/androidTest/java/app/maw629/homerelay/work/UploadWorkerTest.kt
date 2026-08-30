@@ -30,9 +30,10 @@ import org.junit.Test
 
 class UploadWorkerTest {
     private val context: Context = ApplicationProvider.getApplicationContext()
-    private val dao = FakeUploadDao()
-    private val gateway = FakeDestinationGateway()
-    private val notifier = FakeUploadNotifier()
+    private val events = mutableListOf<String>()
+    private val dao = FakeUploadDao(events)
+    private val gateway = FakeDestinationGateway(events)
+    private val notifier = FakeUploadNotifier(events)
     private val store = DestinationStore(
         PreferenceDataStoreFactory.create(
             produceFile = { File(context.cacheDir, "worker-test-${UUID.randomUUID()}.preferences_pb") }
@@ -154,7 +155,7 @@ class UploadWorkerTest {
     }
 
     @Test
-    fun workerPostsUploadingBeforeWriting() = runTest {
+    fun workerPostsUploadingAfterDurableClaimAndBeforeWriting() = runTest {
         val upload = item("item-1")
         dao.insert(upload)
         destinationIsConfigured()
@@ -162,6 +163,7 @@ class UploadWorkerTest {
         runWorker(upload.id)
 
         assertEquals(listOf(upload.id), notifier.uploadingIds)
+        assertEquals(listOf("begun:item-1", "uploading:item-1", "write"), events.take(3))
     }
 
     @Test
@@ -228,7 +230,7 @@ class UploadWorkerTest {
     }
 }
 
-private class FakeUploadDao : UploadDao {
+private class FakeUploadDao(private val events: MutableList<String>) : UploadDao {
     private val items = mutableMapOf<String, UploadItem>()
     private val uploads = MutableStateFlow<List<UploadItem>>(emptyList())
 
@@ -241,7 +243,10 @@ private class FakeUploadDao : UploadDao {
         uploads.value = items.values.toList()
     }
 
-    override suspend fun beginUpload(id: String): Int = transition(id, setOf(UploadState.QUEUED), UploadState.UPLOADING)
+    override suspend fun beginUpload(id: String): Int =
+        transition(id, setOf(UploadState.QUEUED), UploadState.UPLOADING).also {
+            if (it == 1) events += "begun:$id"
+        }
 
     override suspend fun requeueInterruptedUploads(): Int = 0
 
@@ -293,7 +298,7 @@ private class FakeUploadDao : UploadDao {
     }
 }
 
-private class FakeDestinationGateway : DestinationGateway {
+private class FakeDestinationGateway(private val events: MutableList<String>) : DestinationGateway {
     var nextWriteResult: DestinationResult = DestinationResult.Success
     var copiedBytes: List<Long> = emptyList()
     var beforeReturning: (suspend () -> Unit)? = null
@@ -307,13 +312,14 @@ private class FakeDestinationGateway : DestinationGateway {
         outputName: String,
         onBytesCopied: suspend (Long) -> Unit
     ): DestinationResult {
+        events += "write"
         copiedBytes.forEach { onBytesCopied(it) }
         beforeReturning?.invoke()
         return nextWriteResult
     }
 }
 
-private class FakeUploadNotifier : UploadNotificationSink {
+private class FakeUploadNotifier(private val events: MutableList<String>) : UploadNotificationSink {
     val foregroundBytes = mutableListOf<Long>()
     val uploadingIds = mutableListOf<String>()
     val completedIds = mutableListOf<String>()
@@ -328,6 +334,7 @@ private class FakeUploadNotifier : UploadNotificationSink {
 
     override fun uploading(item: UploadItem) {
         uploadingIds += item.id
+        events += "uploading:${item.id}"
     }
 
     override fun completed(item: UploadItem) {

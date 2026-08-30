@@ -89,7 +89,10 @@ class UploadRepositoryTest {
 
     @Test
     fun enqueuePostsQueuedStatusAfterPersistingAndScheduling() = runTest {
-        val notifier = RecordingNotifier()
+        val events = mutableListOf<String>()
+        val dao = FakeUploadDao(events)
+        val scheduler = FakeUploadScheduler(events)
+        val notifier = RecordingNotifier(events)
         val repository = UploadRepository(
             dao, scheduler, { "queued-item" }, { 1_788_013_501_000 }, { "a1b2c3" }, notifier
         )
@@ -102,6 +105,10 @@ class UploadRepositoryTest {
 
             assertEquals("queued-item", notifier.queuedIds.single())
             assertEquals(UploadState.QUEUED, dao.get("queued-item")!!.state)
+            assertEquals(
+                listOf("persisted:queued-item", "scheduled:queued-item", "queued:queued-item"),
+                events
+            )
         } finally {
             stagedFile.delete()
         }
@@ -203,13 +210,14 @@ class UploadRepositoryTest {
     )
 }
 
-private class FakeUploadDao : UploadDao {
+private class FakeUploadDao(private val events: MutableList<String>? = null) : UploadDao {
     private val items = linkedMapOf<String, UploadItem>()
     private val uploads = MutableStateFlow<List<UploadItem>>(emptyList())
 
     override suspend fun insert(item: UploadItem) {
         items[item.id] = item
         uploads.value = items.values.toList()
+        events?.add("persisted:${item.id}")
     }
 
     override fun observeAll(): Flow<List<UploadItem>> = uploads
@@ -267,7 +275,7 @@ private class FakeUploadDao : UploadDao {
     }
 }
 
-private class FakeUploadScheduler : UploadScheduler {
+private class FakeUploadScheduler(private val events: MutableList<String>? = null) : UploadScheduler {
     val scheduledIds = mutableListOf<String>()
     val cancelledIds = mutableListOf<String>()
     val operations = mutableListOf<String>()
@@ -277,6 +285,7 @@ private class FakeUploadScheduler : UploadScheduler {
         beforeSchedule?.invoke()
         scheduledIds += uploadItemId
         operations += "schedule:$uploadItemId"
+        events?.add("scheduled:$uploadItemId")
     }
 
     override suspend fun cancel(uploadItemId: String) {
@@ -285,7 +294,7 @@ private class FakeUploadScheduler : UploadScheduler {
     }
 }
 
-private class RecordingNotifier : UploadNotificationSink {
+private class RecordingNotifier(private val events: MutableList<String>? = null) : UploadNotificationSink {
     val queuedIds = mutableListOf<String>()
 
     override fun foregroundInfo(item: UploadItem, copied: Long, total: Long): ForegroundInfo =
@@ -293,6 +302,7 @@ private class RecordingNotifier : UploadNotificationSink {
 
     override fun queued(item: UploadItem) {
         queuedIds += item.id
+        events?.add("queued:${item.id}")
     }
 
     override fun uploading(item: UploadItem) = Unit
