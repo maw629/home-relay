@@ -3,7 +3,11 @@ package app.maw629.homerelay.share
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -69,15 +73,17 @@ internal fun ShareQueueScreen(
             modifier = Modifier.fillMaxSize(),
             color = MaterialTheme.colorScheme.background
         ) {
-            Text(
-                when (status) {
-                    ShareQueueStatus.Preparing -> "Preparing files for Home Relay"
-                    is ShareQueueStatus.Queued -> "Queued ${status.count} ${if (status.count == 1) "file" else "files"} for Home Relay"
-                    ShareQueueStatus.DestinationMissing -> "Choose a destination in Home Relay before sharing files"
-                    ShareQueueStatus.SourceUnreadable -> "A shared file could not be read"
-                    ShareQueueStatus.StorageFull -> "Not enough storage to queue shared files"
-                }
-            )
+            Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
+                Text(
+                    when (status) {
+                        ShareQueueStatus.Preparing -> "Preparing files for Home Relay"
+                        is ShareQueueStatus.Queued -> "Queued ${status.count} ${if (status.count == 1) "file" else "files"} for Home Relay"
+                        ShareQueueStatus.DestinationMissing -> "Choose a destination in Home Relay before sharing files"
+                        ShareQueueStatus.SourceUnreadable -> "A shared file could not be read"
+                        ShareQueueStatus.StorageFull -> "Not enough storage to queue shared files"
+                    }
+                )
+            }
         }
     }
 }
