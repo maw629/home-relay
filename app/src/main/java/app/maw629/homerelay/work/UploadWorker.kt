@@ -25,8 +25,13 @@ class UploadWorker(
 ) : CoroutineWorker(appContext, params) {
     override suspend fun doWork(): Result {
         val itemId = inputData.getString(UPLOAD_ITEM_ID) ?: return Result.failure()
-        val item = dao.get(itemId) ?: return Result.failure()
+        var item = dao.get(itemId) ?: return Result.failure()
+        if (item.state == UploadState.UPLOADING) {
+            if (dao.requeueInterruptedUpload(item.id) == 0) return Result.success()
+            item = dao.get(itemId) ?: return Result.failure()
+        }
         if (item.state != UploadState.QUEUED || dao.beginUpload(item.id) == 0) return Result.success()
+        notifier.uploading(item)
         val destinationUri = destinationStore.destinationTreeUri.firstOrNull()?.let(Uri::parse)
             ?: return needsAttention(item, UploadErrorCode.DESTINATION_ACCESS_LOST)
         val source = File(item.stagedPath)

@@ -6,6 +6,7 @@ import androidx.compose.ui.test.performClick
 import org.junit.Assert.assertEquals
 import app.maw629.homerelay.data.UploadErrorCode
 import app.maw629.homerelay.data.UploadState
+import java.time.Instant
 import org.junit.Rule
 import org.junit.Test
 
@@ -24,8 +25,10 @@ class UploadsScreenTest {
                         id = "upload-1",
                         name = "report.pdf",
                         sizeBytes = 42,
+                        createdAtMillis = 1,
                         state = UploadState.NEEDS_ATTENTION,
-                        errorCode = UploadErrorCode.DESTINATION_ACCESS_LOST
+                        errorCode = UploadErrorCode.DESTINATION_ACCESS_LOST,
+                        errorMessage = "Choose the destination folder again."
                     )
                 ),
                 onRetry = { retriedId = it },
@@ -51,8 +54,10 @@ class UploadsScreenTest {
                         id = "upload-1",
                         name = "report.pdf",
                         sizeBytes = 42,
+                        createdAtMillis = 1,
                         state = UploadState.QUEUED,
-                        errorCode = UploadErrorCode.NONE
+                        errorCode = UploadErrorCode.NONE,
+                        errorMessage = null
                     )
                 ),
                 onRetry = {},
@@ -75,8 +80,10 @@ class UploadsScreenTest {
                         id = "upload-1",
                         name = "report.pdf",
                         sizeBytes = 42,
+                        createdAtMillis = 1,
                         state = UploadState.COMPLETED,
-                        errorCode = UploadErrorCode.NONE
+                        errorCode = UploadErrorCode.NONE,
+                        errorMessage = null
                     )
                 ),
                 onRetry = {},
@@ -87,5 +94,30 @@ class UploadsScreenTest {
 
         composeRule.onNodeWithText("Retry").assertDoesNotExist()
         composeRule.onNodeWithText("Cancel").assertDoesNotExist()
+    }
+
+    @Test
+    fun attentionUploadShowsCreationTimeAndActionableError() {
+        composeRule.setContent {
+            UploadsScreen(
+                uploads = listOf(
+                    UploadRow(
+                        id = "upload-1",
+                        name = "report.pdf",
+                        sizeBytes = 42,
+                        createdAtMillis = 1_788_013_501_000,
+                        state = UploadState.NEEDS_ATTENTION,
+                        errorCode = UploadErrorCode.DESTINATION_ACCESS_LOST,
+                        errorMessage = "Choose the destination folder again."
+                    )
+                ),
+                onRetry = {},
+                onCancel = {},
+                onChooseFolder = {}
+            )
+        }
+
+        composeRule.onNodeWithText(Instant.ofEpochMilli(1_788_013_501_000).toString()).assertExists()
+        composeRule.onNodeWithText("Choose the destination folder again.").assertExists()
     }
 }

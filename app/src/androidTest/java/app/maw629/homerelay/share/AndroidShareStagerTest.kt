@@ -48,6 +48,16 @@ class AndroidShareStagerTest {
     }
 
     @Test
+    fun stageRejectsNonContentUriBeforeOpeningIt() = runTest {
+        val result = stager.stage(
+            "item-file",
+            IncomingShare(Uri.parse("file:///tmp/report.pdf"), "report.pdf", "application/pdf")
+        )
+
+        assertEquals(StageResult.SourceUnreadable, result)
+    }
+
+    @Test
     fun stageMissingProviderDisplayNameUsesSharedFile() = runTest {
         val result = stager.stage(
             "item-3",
@@ -60,5 +70,20 @@ class AndroidShareStagerTest {
 
         assertTrue(result is StageResult.Staged)
         assertEquals("item-3-shared-file", (result as StageResult.Staged).file.name)
+    }
+
+    @Test
+    fun stageUsesProviderDisplayNameInsteadOfUriPath() = runTest {
+        val result = stager.stage(
+            "item-4",
+            IncomingShare(
+                Uri.parse("content://app.maw629.homerelay.share-test/opaque-id"),
+                "opaque-id",
+                "application/pdf"
+            )
+        )
+
+        assertTrue(result is StageResult.Staged)
+        assertEquals("report.pdf", (result as StageResult.Staged).displayName)
     }
 }

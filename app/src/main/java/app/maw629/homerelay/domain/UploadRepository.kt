@@ -6,6 +6,7 @@ import app.maw629.homerelay.data.UploadItem
 import app.maw629.homerelay.data.UploadState
 import app.maw629.homerelay.share.IncomingShare
 import app.maw629.homerelay.share.StageResult
+import app.maw629.homerelay.notifications.UploadNotificationSink
 import app.maw629.homerelay.work.UploadScheduler
 import java.io.File
 import kotlinx.coroutines.flow.Flow
@@ -17,15 +18,16 @@ class UploadRepository(
     private val scheduler: UploadScheduler,
     private val newId: () -> String,
     private val nowMillis: () -> Long,
-    private val randomSuffix: () -> String
+    private val randomSuffix: () -> String,
+    private val notifier: UploadNotificationSink? = null
 ) {
     suspend fun enqueue(staged: StageResult.Staged, share: IncomingShare): String {
         val id = newId()
         val item = UploadItem(
             id = id,
-            originalName = share.displayName,
+            originalName = staged.displayName,
             mimeType = share.mimeType,
-            outputName = OutputNameFactory.create(share.displayName, nowMillis(), randomSuffix()),
+            outputName = OutputNameFactory.create(staged.displayName, nowMillis(), randomSuffix()),
             stagedPath = staged.file.absolutePath,
             byteSize = staged.byteSize,
             createdAtMillis = nowMillis(),
@@ -35,6 +37,7 @@ class UploadRepository(
         )
         dao.insert(item)
         scheduler.schedule(id)
+        notifier?.queued(item)
         return id
     }
 
@@ -64,6 +67,13 @@ class UploadRepository(
     }
 
     fun observeUploads(): Flow<List<UploadItem>> = dao.observeAll()
+
+    suspend fun resumePending() {
+        operationMutex.withLock {
+            dao.requeueInterruptedUploads()
+            dao.queuedIds().forEach { scheduler.schedule(it) }
+        }
+    }
 
     private companion object {
         val operationMutex = Mutex()

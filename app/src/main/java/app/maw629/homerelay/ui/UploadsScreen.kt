@@ -13,6 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.maw629.homerelay.data.UploadErrorCode
 import app.maw629.homerelay.data.UploadState
+import java.time.Instant
 
 @Composable
 fun UploadsScreen(
@@ -36,7 +37,9 @@ fun UploadsScreen(
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(upload.name)
                 Text("${upload.sizeBytes} bytes")
+                Text(Instant.ofEpochMilli(upload.createdAtMillis).toString())
                 Text(upload.state.name.replace('_', ' '))
+                upload.errorMessage?.let { Text(it) }
                 if (upload.state == UploadState.NEEDS_ATTENTION) {
                     Button(onClick = { onRetry(upload.id) }) { Text("Retry") }
                     if (upload.errorCode == UploadErrorCode.DESTINATION_ACCESS_LOST) {

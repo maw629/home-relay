@@ -27,6 +27,15 @@ interface UploadDao {
     """)
     suspend fun beginUpload(id: String): Int
 
+    @Query("UPDATE upload_items SET state = 'QUEUED', errorCode = 'NONE' WHERE state = 'UPLOADING'")
+    suspend fun requeueInterruptedUploads(): Int
+
+    @Query("UPDATE upload_items SET state = 'QUEUED', errorCode = 'NONE' WHERE id = :id AND state = 'UPLOADING'")
+    suspend fun requeueInterruptedUpload(id: String): Int
+
+    @Query("SELECT id FROM upload_items WHERE state = 'QUEUED' ORDER BY createdAtMillis ASC")
+    suspend fun queuedIds(): List<String>
+
     @Query("""
         UPDATE upload_items
         SET state = :state, errorCode = :errorCode, retryCount = :retryCount

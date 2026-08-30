@@ -153,6 +153,29 @@ class UploadWorkerTest {
         assertEquals(listOf(0L, 1024L * 1024, 10L * 1024 * 1024), notifier.foregroundBytes)
     }
 
+    @Test
+    fun workerPostsUploadingBeforeWriting() = runTest {
+        val upload = item("item-1")
+        dao.insert(upload)
+        destinationIsConfigured()
+
+        runWorker(upload.id)
+
+        assertEquals(listOf(upload.id), notifier.uploadingIds)
+    }
+
+    @Test
+    fun reexecutedWorkerReclaimsInterruptedUploadAndCompletesOnce() = runTest {
+        val upload = item("item-1").copy(state = UploadState.UPLOADING)
+        dao.insert(upload)
+        destinationIsConfigured()
+
+        runWorker(upload.id)
+
+        assertEquals(UploadState.COMPLETED, dao.get(upload.id)!!.state)
+        assertEquals(listOf(upload.id), notifier.completedIds)
+    }
+
     private suspend fun destinationIsConfigured() {
         store.setDestination("content://example/tree/destination")
     }
@@ -220,6 +243,18 @@ private class FakeUploadDao : UploadDao {
 
     override suspend fun beginUpload(id: String): Int = transition(id, setOf(UploadState.QUEUED), UploadState.UPLOADING)
 
+    override suspend fun requeueInterruptedUploads(): Int = 0
+
+    override suspend fun requeueInterruptedUpload(id: String): Int = transition(
+        id,
+        setOf(UploadState.UPLOADING),
+        UploadState.QUEUED
+    )
+
+    override suspend fun queuedIds(): List<String> = items.values
+        .filter { it.state == UploadState.QUEUED }
+        .map { it.id }
+
     override suspend fun finishUpload(
         id: String,
         state: UploadState,
@@ -280,12 +315,19 @@ private class FakeDestinationGateway : DestinationGateway {
 
 private class FakeUploadNotifier : UploadNotificationSink {
     val foregroundBytes = mutableListOf<Long>()
+    val uploadingIds = mutableListOf<String>()
     val completedIds = mutableListOf<String>()
     val attentionItems = mutableListOf<Pair<String, UploadErrorCode>>()
 
     override fun foregroundInfo(item: UploadItem, copied: Long, total: Long): ForegroundInfo {
         foregroundBytes += copied
         return ForegroundInfo(1, android.app.Notification())
+    }
+
+    override fun queued(item: UploadItem) = Unit
+
+    override fun uploading(item: UploadItem) {
+        uploadingIds += item.id
     }
 
     override fun completed(item: UploadItem) {

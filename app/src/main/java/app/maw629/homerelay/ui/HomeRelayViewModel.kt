@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -28,12 +29,15 @@ data class UploadRow(
     val id: String,
     val name: String,
     val sizeBytes: Long,
+    val createdAtMillis: Long,
     val state: UploadState,
-    val errorCode: UploadErrorCode
+    val errorCode: UploadErrorCode,
+    val errorMessage: String?
 )
 
-fun interface PersistableUriPermissionTaker {
+interface PersistableUriPermissionTaker {
     fun takePersistableUriPermission(uri: Uri)
+    fun releasePersistableUriPermission(uri: Uri)
 }
 
 class HomeRelayViewModel(
@@ -55,8 +59,10 @@ class HomeRelayViewModel(
                     id = upload.id,
                     name = upload.originalName,
                     sizeBytes = upload.byteSize,
+                    createdAtMillis = upload.createdAtMillis,
                     state = upload.state,
-                    errorCode = upload.errorCode
+                    errorCode = upload.errorCode,
+                    errorMessage = upload.errorCode.message
                 )
             }
         }
@@ -64,16 +70,27 @@ class HomeRelayViewModel(
 
     fun selectDestination(uri: Uri, permissionTaker: PersistableUriPermissionTaker) {
         viewModelScope.launch {
+            val previousUri = destinationStore.destinationTreeUri.firstOrNull()
+            var acquiredGrant = false
             val result = try {
                 permissionTaker.takePersistableUriPermission(uri)
+                acquiredGrant = true
                 gateway.validate(uri)
             } catch (_: SecurityException) {
                 DestinationResult.AccessLost
             }
             if (result == DestinationResult.Success) {
                 destinationStore.setDestination(uri.toString())
+                if (previousUri != null && previousUri != uri.toString()) {
+                    runCatching {
+                        permissionTaker.releasePersistableUriPermission(Uri.parse(previousUri))
+                    }
+                }
                 destinationError.value = null
             } else {
+                if (acquiredGrant) {
+                    runCatching { permissionTaker.releasePersistableUriPermission(uri) }
+                }
                 destinationError.value =
                     "Home Relay cannot write to that folder. Choose another writable Drive folder."
             }
@@ -88,3 +105,14 @@ class HomeRelayViewModel(
         viewModelScope.launch { uploadRepository.cancel(id) }
     }
 }
+
+private val UploadErrorCode.message: String?
+    get() = when (this) {
+        UploadErrorCode.NONE -> null
+        UploadErrorCode.SOURCE_UNREADABLE -> "The staged file is no longer available."
+        UploadErrorCode.STAGING_STORAGE_FULL -> "Home Relay needs more storage space."
+        UploadErrorCode.DESTINATION_ACCESS_LOST -> "Choose the destination folder again."
+        UploadErrorCode.DESTINATION_QUOTA -> "The destination folder has no available storage."
+        UploadErrorCode.DESTINATION_POLICY -> "The destination provider rejected this upload."
+        UploadErrorCode.WRITE_OUTCOME_UNKNOWN -> "The previous upload result is unknown. Retry creates a new file."
+    }
