@@ -10,8 +10,12 @@ import androidx.room.Room
 import app.maw629.homerelay.data.DestinationStore
 import app.maw629.homerelay.data.HomeRelayDatabase
 import app.maw629.homerelay.destination.AndroidDocumentTreeGateway
+import app.maw629.homerelay.domain.UploadRepository
 import app.maw629.homerelay.notifications.UploadNotifier
+import app.maw629.homerelay.share.AndroidShareStager
+import app.maw629.homerelay.work.WorkManagerUploadScheduler
 import app.maw629.homerelay.work.UploadWorker
+import java.util.UUID
 
 class HomeRelayApplication : Application(), Configuration.Provider {
     lateinit var container: AppContainer
@@ -42,6 +46,15 @@ class AppContainer(context: Application) {
     val destinationStore = DestinationStore(context)
     val destinationGateway = AndroidDocumentTreeGateway(context)
     val uploadNotifier = UploadNotifier(context)
+    val shareStager = AndroidShareStager(context)
+    val uploadScheduler = WorkManagerUploadScheduler(context)
+    val uploadRepository = UploadRepository(
+        database.uploadDao(),
+        uploadScheduler,
+        { UUID.randomUUID().toString() },
+        { System.currentTimeMillis() },
+        { UUID.randomUUID().toString().take(8) }
+    )
 }
 
 class HomeRelayWorkerFactory(
