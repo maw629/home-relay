@@ -12,7 +12,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.testTag
 import androidx.lifecycle.lifecycleScope
 import app.maw629.homerelay.HomeRelayApplication
 import app.maw629.homerelay.ui.theme.HomeRelayTheme
@@ -60,10 +59,14 @@ sealed interface ShareQueueStatus {
 }
 
 @Composable
-private fun ShareQueueScreen(status: ShareQueueStatus) {
-    HomeRelayTheme {
+internal fun ShareQueueScreen(
+    status: ShareQueueStatus,
+    darkTheme: Boolean = androidx.compose.foundation.isSystemInDarkTheme(),
+    dynamicColor: Boolean = true
+) {
+    HomeRelayTheme(darkTheme = darkTheme, dynamicColor = dynamicColor) {
         Surface(
-            modifier = Modifier.fillMaxSize().testTag("share-queue-surface"),
+            modifier = Modifier.fillMaxSize(),
             color = MaterialTheme.colorScheme.background
         ) {
             Text(
