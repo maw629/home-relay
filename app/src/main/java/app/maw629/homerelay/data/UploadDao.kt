@@ -18,6 +18,28 @@ interface UploadDao {
     @Query("SELECT * FROM upload_items WHERE id = :id")
     suspend fun get(id: String): UploadItem?
 
+    @Query("""
+        UPDATE upload_items
+        SET originalName = :originalName, outputName = :outputName, byteSize = :byteSize,
+            state = 'QUEUED', errorCode = 'NONE'
+        WHERE id = :id AND state = 'STAGING'
+    """)
+    suspend fun completeStaging(
+        id: String,
+        originalName: String,
+        outputName: String,
+        byteSize: Long
+    ): Int
+
+    @Query("""
+        UPDATE upload_items SET state = 'NEEDS_ATTENTION', errorCode = :errorCode
+        WHERE id = :id AND state = 'STAGING'
+    """)
+    suspend fun failStaging(id: String, errorCode: UploadErrorCode): Int
+
+    @Query("SELECT * FROM upload_items WHERE state = 'STAGING' ORDER BY createdAtMillis ASC")
+    suspend fun stagingItems(): List<UploadItem>
+
     @Update
     suspend fun update(item: UploadItem)
 

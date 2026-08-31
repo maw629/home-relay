@@ -58,9 +58,13 @@ scheduler, and repository. Workers receive these dependencies from
 | Room `upload_items` | Upload metadata, state, retry count, and error code | Never stores file bytes. Schema history lives under `app/schemas/`. |
 | `noBackupFilesDir/pending` | Staged shared-file bytes | Delete only after provider success or explicit cancellation. |
 
-`UploadItem` states are `QUEUED`, `UPLOADING`, `COMPLETED`,
+`UploadItem` states are `STAGING`, `QUEUED`, `UPLOADING`, `COMPLETED`,
 `NEEDS_ATTENTION`, and `CANCELLED`. Guarded DAO transitions are intentional:
 
+- Share intake creates `STAGING` before source URI access, completes only its
+  own staging row to `QUEUED`, and marks restored staging rows
+  `NEEDS_ATTENTION` with `SHARE_INTERRUPTED` rather than restaging a temporary
+  source URI.
 - Worker claims only `QUEUED -> UPLOADING`.
 - Worker finishes only an item it still owns in `UPLOADING`.
 - Retry permits `NEEDS_ATTENTION -> QUEUED` and creates a new output name.

@@ -126,14 +126,45 @@ class HomeRelayViewModelTest {
         assertEquals(listOf("content://new/tree/drive"), permissionTaker.destinationWhenReleased)
     }
 
+    @Test
+    fun interruptedShareShowsAnActionableError() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val dao = EmptyUploadDao()
+        dao.insert(
+            UploadItem(
+                id = "interrupted-share",
+                originalName = "report.pdf",
+                mimeType = "application/pdf",
+                outputName = "report.pdf",
+                stagedPath = "/tmp/report.pdf",
+                byteSize = 42,
+                createdAtMillis = 1,
+                retryCount = 0,
+                state = UploadState.NEEDS_ATTENTION,
+                errorCode = UploadErrorCode.SHARE_INTERRUPTED
+            )
+        )
+        val viewModel = viewModel(
+            FakeDestinationRepository(null),
+            FakeDestinationGateway(DestinationResult.Success),
+            dao
+        )
+
+        assertEquals(
+            "The shared file could not be prepared. Share it again.",
+            viewModel.uploads.first { it.isNotEmpty() }.single().errorMessage
+        )
+    }
+
     private fun viewModel(
         store: DestinationRepository,
-        gateway: DestinationGateway
+        gateway: DestinationGateway,
+        dao: UploadDao = EmptyUploadDao()
     ): HomeRelayViewModel =
         HomeRelayViewModel(
             store,
             gateway,
-            UploadRepository(EmptyUploadDao(), NoOpUploadScheduler(), { "id" }, { 0L }, { "suffix" })
+            UploadRepository(dao, NoOpUploadScheduler(), { "id" }, { 0L }, { "suffix" })
         )
 
     private class RecordingPermissionTaker(
@@ -184,10 +215,45 @@ class HomeRelayViewModelTest {
     }
 
     private class EmptyUploadDao : UploadDao {
-        override suspend fun insert(item: UploadItem) = Unit
-        override fun observeAll(): Flow<List<UploadItem>> = MutableStateFlow(emptyList())
-        override suspend fun get(id: String): UploadItem? = null
-        override suspend fun update(item: UploadItem) = Unit
+        private val items = mutableMapOf<String, UploadItem>()
+        private val uploads = MutableStateFlow<List<UploadItem>>(emptyList())
+
+        override suspend fun insert(item: UploadItem) = save(item)
+        override fun observeAll(): Flow<List<UploadItem>> = uploads
+        override suspend fun get(id: String): UploadItem? = items[id]
+
+        override suspend fun completeStaging(
+            id: String,
+            originalName: String,
+            outputName: String,
+            byteSize: Long
+        ): Int {
+            val item = items[id] ?: return 0
+            if (item.state != UploadState.STAGING) return 0
+            save(
+                item.copy(
+                    originalName = originalName,
+                    outputName = outputName,
+                    byteSize = byteSize,
+                    state = UploadState.QUEUED,
+                    errorCode = UploadErrorCode.NONE
+                )
+            )
+            return 1
+        }
+
+        override suspend fun failStaging(id: String, errorCode: UploadErrorCode): Int {
+            val item = items[id] ?: return 0
+            if (item.state != UploadState.STAGING) return 0
+            save(item.copy(state = UploadState.NEEDS_ATTENTION, errorCode = errorCode))
+            return 1
+        }
+
+        override suspend fun stagingItems(): List<UploadItem> = items.values
+            .filter { it.state == UploadState.STAGING }
+            .sortedBy { it.createdAtMillis }
+
+        override suspend fun update(item: UploadItem) = save(item)
         override suspend fun beginUpload(id: String): Int = 0
         override suspend fun requeueInterruptedUploads(): Int = 0
         override suspend fun requeueInterruptedUpload(id: String): Int = 0
@@ -195,6 +261,14 @@ class HomeRelayViewModelTest {
         override suspend fun finishUpload(id: String, state: UploadState, errorCode: UploadErrorCode, retryCount: Int): Int = 0
         override suspend fun retry(id: String, outputName: String, retryCount: Int): Int = 0
         override suspend fun cancel(id: String): Int = 0
-        override suspend fun delete(id: String) = Unit
+        override suspend fun delete(id: String) {
+            items.remove(id)
+            uploads.value = items.values.toList()
+        }
+
+        private fun save(item: UploadItem) {
+            items[item.id] = item
+            uploads.value = items.values.toList()
+        }
     }
 }

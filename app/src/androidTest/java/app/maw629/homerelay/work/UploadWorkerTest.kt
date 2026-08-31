@@ -237,6 +237,38 @@ private class FakeUploadDao(private val events: MutableList<String>) : UploadDao
     override suspend fun insert(item: UploadItem) = save(item)
     override fun observeAll(): Flow<List<UploadItem>> = uploads
     override suspend fun get(id: String): UploadItem? = items[id]
+
+    override suspend fun completeStaging(
+        id: String,
+        originalName: String,
+        outputName: String,
+        byteSize: Long
+    ): Int {
+        val item = items[id] ?: return 0
+        if (item.state != UploadState.STAGING) return 0
+        save(
+            item.copy(
+                originalName = originalName,
+                outputName = outputName,
+                byteSize = byteSize,
+                state = UploadState.QUEUED,
+                errorCode = UploadErrorCode.NONE
+            )
+        )
+        return 1
+    }
+
+    override suspend fun failStaging(id: String, errorCode: UploadErrorCode): Int {
+        val item = items[id] ?: return 0
+        if (item.state != UploadState.STAGING) return 0
+        save(item.copy(state = UploadState.NEEDS_ATTENTION, errorCode = errorCode))
+        return 1
+    }
+
+    override suspend fun stagingItems(): List<UploadItem> = items.values
+        .filter { it.state == UploadState.STAGING }
+        .sortedBy { it.createdAtMillis }
+
     override suspend fun update(item: UploadItem) = save(item)
     override suspend fun delete(id: String) {
         items.remove(id)

@@ -111,6 +111,7 @@ private val UploadErrorCode.message: String?
         UploadErrorCode.NONE -> null
         UploadErrorCode.SOURCE_UNREADABLE -> "The staged file is no longer available."
         UploadErrorCode.STAGING_STORAGE_FULL -> "Home Relay needs more storage space."
+        UploadErrorCode.SHARE_INTERRUPTED -> "The shared file could not be prepared. Share it again."
         UploadErrorCode.DESTINATION_ACCESS_LOST -> "Choose the destination folder again."
         UploadErrorCode.DESTINATION_QUOTA -> "The destination folder has no available storage."
         UploadErrorCode.DESTINATION_POLICY -> "The destination provider rejected this upload."

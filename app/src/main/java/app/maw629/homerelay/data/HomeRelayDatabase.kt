@@ -4,11 +4,19 @@ import androidx.room.Database
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverter
 import androidx.room.TypeConverters
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [UploadItem::class], version = 1, exportSchema = true)
+@Database(entities = [UploadItem::class], version = 2, exportSchema = true)
 @TypeConverters(UploadTypeConverters::class)
 abstract class HomeRelayDatabase : RoomDatabase() {
     abstract fun uploadDao(): UploadDao
+
+    companion object {
+        val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) = Unit
+        }
+    }
 }
 
 class UploadTypeConverters {

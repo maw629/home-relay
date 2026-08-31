@@ -48,7 +48,7 @@ class AppContainer(context: Application) {
         context,
         HomeRelayDatabase::class.java,
         "home-relay.db"
-    ).build()
+    ).addMigrations(HomeRelayDatabase.MIGRATION_1_2).build()
     val destinationStore = DestinationStore(context)
     val destinationGateway = AndroidDocumentTreeGateway(context)
     val uploadNotifier = UploadNotifier(context)

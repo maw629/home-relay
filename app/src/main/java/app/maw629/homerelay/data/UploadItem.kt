@@ -4,6 +4,7 @@ import androidx.room.Entity
 import androidx.room.PrimaryKey
 
 enum class UploadState {
+    STAGING,
     QUEUED,
     UPLOADING,
     COMPLETED,
@@ -15,6 +16,7 @@ enum class UploadErrorCode {
     NONE,
     SOURCE_UNREADABLE,
     STAGING_STORAGE_FULL,
+    SHARE_INTERRUPTED,
     DESTINATION_ACCESS_LOST,
     DESTINATION_QUOTA,
     DESTINATION_POLICY,
