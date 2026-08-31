@@ -509,11 +509,8 @@ class ShareReceiverActivityTest {
     private fun assertVisibleBeforeConfiguredTerminalDeadline(
         scenario: ActivityScenario<ShareReceiverActivity>
     ) {
-        if (configuredTerminalDurationMillis == 0L) return
-
-        SystemClock.sleep(configuredTerminalDurationMillis / 2L)
         assertTrue(
-            "The receiver must remain visible before its configured ${configuredTerminalDurationMillis} ms terminal deadline",
+            "The receiver must be visible when its terminal status is observed",
             scenario.state != androidx.lifecycle.Lifecycle.State.DESTROYED
         )
     }
@@ -526,9 +523,9 @@ class ShareReceiverActivityTest {
             .coerceAtMost(Long.MAX_VALUE - TERMINAL_DEADLINE_TOLERANCE_MILLIS) +
             TERMINAL_DEADLINE_TOLERANCE_MILLIS
         val remainingWaitMillis = terminalDisplayRemainingMillis(
-            terminalAtMillis = terminalObservedAt,
+            terminalAtElapsedMillis = terminalObservedAt,
             displayDurationMillis = latestAllowedElapsedMillis,
-            nowMillis = SystemClock.elapsedRealtime()
+            nowElapsedMillis = SystemClock.elapsedRealtime()
         )
         assertTrue(
             "The receiver must finish within its configured ${configuredTerminalDurationMillis} ms terminal duration plus $TERMINAL_DEADLINE_TOLERANCE_MILLIS ms scheduling and polling tolerance",

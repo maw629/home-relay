@@ -1,6 +1,7 @@
 package app.maw629.homerelay.share
 
 import android.os.Bundle
+import android.os.SystemClock
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
@@ -61,12 +62,12 @@ class ShareReceiverActivity : ComponentActivity() {
             val terminalStatus = intakeStatus as? ShareIntakeStatus.Terminal
             if (terminalStatus != null) {
                 LaunchedEffect(terminalStatus.terminalAtMillis) {
-                    val remainingMillis = terminalDisplayRemainingMillis(
-                        terminalAtMillis = terminalStatus.terminalAtMillis,
+                    waitForTerminalDisplay(
+                        terminalAtElapsedMillis = terminalStatus.terminalAtMillis,
                         displayDurationMillis = BuildConfig.SHARE_STATUS_DISPLAY_MILLIS,
-                        nowMillis = System.currentTimeMillis()
+                        nowMillis = SystemClock::elapsedRealtime,
+                        delayMillis = ::delay
                     )
-                    delay(remainingMillis)
                     finish()
                 }
             }
@@ -84,17 +85,41 @@ class ShareReceiverActivity : ComponentActivity() {
 }
 
 internal fun terminalDisplayRemainingMillis(
-    terminalAtMillis: Long,
+    terminalAtElapsedMillis: Long,
     displayDurationMillis: Long,
-    nowMillis: Long
+    nowElapsedMillis: Long
 ): Long {
     require(displayDurationMillis >= 0L)
-    if (nowMillis <= terminalAtMillis) return displayDurationMillis
+    if (nowElapsedMillis <= terminalAtElapsedMillis) return displayDurationMillis
 
-    val elapsedMillis = nowMillis - terminalAtMillis
+    val elapsedMillis = nowElapsedMillis - terminalAtElapsedMillis
     if (elapsedMillis < 0L) return 0L
 
     return maxOf(0L, displayDurationMillis - elapsedMillis)
+}
+
+internal fun terminalDisplayDelayChunkMillis(remainingMillis: Long): Long {
+    require(remainingMillis > 0L)
+    return minOf(remainingMillis, MAXIMUM_DELAY_CHUNK_MILLIS)
+}
+
+private const val MAXIMUM_DELAY_CHUNK_MILLIS = 86_400_000L
+
+internal suspend fun waitForTerminalDisplay(
+    terminalAtElapsedMillis: Long,
+    displayDurationMillis: Long,
+    nowMillis: () -> Long,
+    delayMillis: suspend (Long) -> Unit
+) {
+    while (true) {
+        val remainingMillis = terminalDisplayRemainingMillis(
+            terminalAtElapsedMillis = terminalAtElapsedMillis,
+            displayDurationMillis = displayDurationMillis,
+            nowElapsedMillis = nowMillis()
+        )
+        if (remainingMillis == 0L) return
+        delayMillis(terminalDisplayDelayChunkMillis(remainingMillis))
+    }
 }
 
 sealed interface ShareQueueStatus {

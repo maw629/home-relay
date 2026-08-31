@@ -2,6 +2,7 @@ package app.maw629.homerelay
 
 import android.app.Application
 import android.content.Context
+import android.os.SystemClock
 import androidx.work.Configuration
 import androidx.work.ListenableWorker
 import androidx.work.WorkerFactory
@@ -71,7 +72,7 @@ class AppContainer(context: Application, applicationScope: CoroutineScope) {
         shareStager,
         destinationStore,
         uploadRepository,
-        { System.currentTimeMillis() }
+        { SystemClock.elapsedRealtime() }
     )
 }
 
