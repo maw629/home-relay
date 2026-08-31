@@ -41,10 +41,73 @@ class UploadRepository(
         return id
     }
 
+    suspend fun createStaging(
+        share: IncomingShare,
+        stagedPathForId: (String) -> String
+    ): UploadItem {
+        val id = newId()
+        val stagedPath = stagedPathForId(id)
+        val item = UploadItem(
+            id = id,
+            originalName = share.displayName,
+            mimeType = share.mimeType,
+            outputName = OutputNameFactory.create(share.displayName, nowMillis(), randomSuffix()),
+            stagedPath = stagedPath,
+            byteSize = 0L,
+            createdAtMillis = nowMillis(),
+            retryCount = 0,
+            state = UploadState.STAGING,
+            errorCode = UploadErrorCode.NONE
+        )
+        dao.insert(item)
+        return item
+    }
+
+    suspend fun completeStaging(item: UploadItem, staged: StageResult.Staged): Boolean {
+        val outputName = OutputNameFactory.create(staged.displayName, nowMillis(), randomSuffix())
+        if (
+            dao.completeStaging(
+                item.id,
+                staged.displayName,
+                outputName,
+                staged.byteSize
+            ) == 0
+        ) {
+            return false
+        }
+
+        val queuedItem = item.copy(
+            originalName = staged.displayName,
+            outputName = outputName,
+            byteSize = staged.byteSize,
+            state = UploadState.QUEUED,
+            errorCode = UploadErrorCode.NONE
+        )
+        runCatching { scheduler.schedule(item.id) }
+        runCatching { notifier?.queued(queuedItem) }
+        return true
+    }
+
+    suspend fun failStaging(id: String, error: UploadErrorCode): Boolean =
+        dao.failStaging(id, error) == 1
+
+    suspend fun recoverInterruptedStaging(): Int {
+        var recoveredCount = 0
+        dao.stagingItems().forEach { item ->
+            if (dao.failStaging(item.id, UploadErrorCode.SHARE_INTERRUPTED) == 1) {
+                File(item.stagedPath).delete()
+                recoveredCount++
+            }
+        }
+        return recoveredCount
+    }
+
     suspend fun retry(id: String) {
         operationMutex.withLock {
             val item = checkNotNull(dao.get(id))
             check(item.state == UploadState.NEEDS_ATTENTION)
+            check(item.errorCode.isRetryable())
+            check(File(item.stagedPath).isFile)
             check(
                 dao.retry(
                     id,
@@ -70,6 +133,7 @@ class UploadRepository(
 
     suspend fun resumePending() {
         operationMutex.withLock {
+            recoverInterruptedStaging()
             dao.requeueInterruptedUploads()
             dao.queuedIds().forEach { scheduler.schedule(it) }
         }
@@ -83,4 +147,12 @@ class UploadRepository(
             UploadState.NEEDS_ATTENTION
         )
     }
+}
+
+fun UploadErrorCode.isRetryable(): Boolean = when (this) {
+    UploadErrorCode.NONE,
+    UploadErrorCode.SOURCE_UNREADABLE,
+    UploadErrorCode.STAGING_STORAGE_FULL,
+    UploadErrorCode.SHARE_INTERRUPTED -> false
+    else -> true
 }

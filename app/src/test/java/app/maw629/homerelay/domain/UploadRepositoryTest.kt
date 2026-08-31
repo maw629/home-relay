@@ -20,6 +20,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -38,17 +39,187 @@ class UploadRepositoryTest {
     )
 
     @Test
+    fun createStagingPersistsBeforeReturningItsTargetPath() = runTest {
+        val item = repository.createStaging(
+            IncomingShare(android.net.Uri.parse("content://sender/report"), "report.pdf", "application/pdf")
+        ) { id -> "/pending/$id.staged" }
+
+        assertEquals(UploadState.STAGING, dao.get(item.id)!!.state)
+        assertEquals("/pending/new-item.staged", dao.get(item.id)!!.stagedPath)
+        assertEquals("report.pdf", dao.get(item.id)!!.originalName)
+        assertEquals("20260829-142501-a1b2c3-report.pdf", dao.get(item.id)!!.outputName)
+        assertEquals(0L, dao.get(item.id)!!.byteSize)
+    }
+
+    @Test
+    fun createStagingExposesInsertFailureToItsCaller() = runTest {
+        dao.insertFailure = IllegalStateException("Room is unavailable")
+
+        try {
+            repository.createStaging(
+                IncomingShare(android.net.Uri.parse("content://sender/report"), "report.pdf", "application/pdf")
+            ) { id -> "/pending/$id.staged" }
+            fail("A staging insert failure must reach the caller")
+        } catch (_: IllegalStateException) {
+        }
+    }
+
+    @Test
+    fun completeStagingSchedulesOnlyAfterTheQueuedTransition() = runTest {
+        val item = insertStagingItem()
+        val statesWhenScheduled = mutableListOf<UploadState?>()
+        scheduler.beforeSchedule = { statesWhenScheduled += dao.get(item.id)?.state }
+
+        assertTrue(repository.completeStaging(item, StageResult.Staged(File(item.stagedPath), 42, "report.pdf")))
+
+        assertEquals(UploadState.QUEUED, dao.get(item.id)!!.state)
+        assertEquals("report.pdf", dao.get(item.id)!!.originalName)
+        assertEquals("20260829-142501-a1b2c3-report.pdf", dao.get(item.id)!!.outputName)
+        assertEquals(listOf(item.id), scheduler.scheduledIds)
+        assertEquals(listOf(UploadState.QUEUED), statesWhenScheduled)
+    }
+
+    @Test
+    fun completeStagingDoesNotScheduleWhenItsGuardedTransitionFails() = runTest {
+        val item = item("item-1", UploadState.QUEUED)
+        dao.insert(item)
+
+        assertFalse(repository.completeStaging(item, StageResult.Staged(File(item.stagedPath), 42, "report.pdf")))
+
+        assertEquals(UploadState.QUEUED, dao.get(item.id)!!.state)
+        assertEquals(emptyList<String>(), scheduler.scheduledIds)
+    }
+
+    @Test
+    fun completeStagingKeepsTheQueuedRowWhenSchedulingFails() = runTest {
+        val item = insertStagingItem()
+        scheduler.scheduleFailure = IllegalStateException("WorkManager is unavailable")
+
+        assertTrue(repository.completeStaging(item, StageResult.Staged(File(item.stagedPath), 42, "report.pdf")))
+
+        assertEquals(UploadState.QUEUED, dao.get(item.id)!!.state)
+    }
+
+    @Test
+    fun failStagingMarksOnlyItsStagingRowAsNeedingAttention() = runTest {
+        val item = insertStagingItem()
+
+        assertTrue(repository.failStaging(item.id, UploadErrorCode.STAGING_STORAGE_FULL))
+
+        assertEquals(UploadState.NEEDS_ATTENTION, dao.get(item.id)!!.state)
+        assertEquals(UploadErrorCode.STAGING_STORAGE_FULL, dao.get(item.id)!!.errorCode)
+        assertFalse(repository.failStaging(item.id, UploadErrorCode.SOURCE_UNREADABLE))
+    }
+
+    @Test
+    fun interruptedStagingBecomesNonRetryableAttentionAndDeletesPrivateFile() = runTest {
+        val staged = File.createTempFile("staging", ".file")
+        try {
+            dao.insert(item("item-1", UploadState.STAGING, stagedPath = staged.absolutePath))
+
+            assertEquals(1, repository.recoverInterruptedStaging())
+
+            assertEquals(UploadErrorCode.SHARE_INTERRUPTED, dao.get("item-1")!!.errorCode)
+            assertFalse(staged.exists())
+        } finally {
+            staged.delete()
+        }
+    }
+
+    @Test
+    fun interruptedStagingRecoveryKeepsThePrivateFileWhenItsGuardedTransitionFails() = runTest {
+        val staged = File.createTempFile("staging", ".file")
+        try {
+            val item = item("item-1", UploadState.STAGING, stagedPath = staged.absolutePath)
+            dao.insert(item)
+            dao.beforeFailStaging = { id -> dao.update(dao.get(id)!!.copy(state = UploadState.QUEUED)) }
+
+            assertEquals(0, repository.recoverInterruptedStaging())
+
+            assertEquals(UploadState.QUEUED, dao.get(item.id)!!.state)
+            assertTrue(staged.exists())
+        } finally {
+            staged.delete()
+        }
+    }
+
+    @Test
     fun retryFromNeedsAttentionGeneratesANewOutputNameAndQueuesWork() = runTest {
-        dao.insert(item("item-1", UploadState.NEEDS_ATTENTION, "old-name.pdf"))
+        val stagedFile = File.createTempFile("upload", ".pdf")
+        try {
+            dao.insert(item("item-1", UploadState.NEEDS_ATTENTION, "old-name.pdf", stagedFile.absolutePath))
 
-        repository.retry("item-1")
+            repository.retry("item-1")
 
-        val item = dao.get("item-1")!!
-        assertEquals(UploadState.QUEUED, item.state)
-        assertEquals(UploadErrorCode.NONE, item.errorCode)
-        assertEquals(2, item.retryCount)
-        assertNotEquals("old-name.pdf", item.outputName)
-        assertEquals(listOf("item-1"), scheduler.scheduledIds)
+            val item = dao.get("item-1")!!
+            assertEquals(UploadState.QUEUED, item.state)
+            assertEquals(UploadErrorCode.NONE, item.errorCode)
+            assertEquals(2, item.retryCount)
+            assertNotEquals("old-name.pdf", item.outputName)
+            assertEquals(listOf("item-1"), scheduler.scheduledIds)
+        } finally {
+            stagedFile.delete()
+        }
+    }
+
+    @Test
+    fun retryRejectsInterruptedSharesEvenWhenTheirPrivateFileIsPresent() = runTest {
+        val stagedFile = File.createTempFile("upload", ".pdf")
+        try {
+            val item = item(
+                "item-1",
+                UploadState.NEEDS_ATTENTION,
+                stagedPath = stagedFile.absolutePath,
+                errorCode = UploadErrorCode.SHARE_INTERRUPTED
+            )
+            dao.insert(item)
+
+            assertIllegalState { repository.retry(item.id) }
+
+            assertEquals(UploadState.NEEDS_ATTENTION, dao.get(item.id)!!.state)
+            assertEquals(emptyList<String>(), scheduler.scheduledIds)
+        } finally {
+            stagedFile.delete()
+        }
+    }
+
+    @Test
+    fun retryRejectsEveryNonRetryableStagingOrSourceError() = runTest {
+        val stagedFile = File.createTempFile("upload", ".pdf")
+        try {
+            listOf(
+                UploadErrorCode.NONE,
+                UploadErrorCode.SOURCE_UNREADABLE,
+                UploadErrorCode.STAGING_STORAGE_FULL
+            ).forEach { errorCode ->
+                val item = item(
+                    errorCode.name,
+                    UploadState.NEEDS_ATTENTION,
+                    stagedPath = stagedFile.absolutePath,
+                    errorCode = errorCode
+                )
+                dao.insert(item)
+
+                assertIllegalState { repository.retry(item.id) }
+                assertEquals(UploadState.NEEDS_ATTENTION, dao.get(item.id)!!.state)
+            }
+
+            assertEquals(emptyList<String>(), scheduler.scheduledIds)
+        } finally {
+            stagedFile.delete()
+        }
+    }
+
+    @Test
+    fun retryRejectsARetryableErrorWhenItsPrivateFileIsMissing() = runTest {
+        val missingFile = File.createTempFile("missing-staged-file", ".pdf").apply { delete() }
+        val item = item("item-1", UploadState.NEEDS_ATTENTION, stagedPath = missingFile.absolutePath)
+        dao.insert(item)
+
+        assertIllegalState { repository.retry(item.id) }
+
+        assertEquals(UploadState.NEEDS_ATTENTION, dao.get(item.id)!!.state)
+        assertEquals(emptyList<String>(), scheduler.scheduledIds)
     }
 
     @Test
@@ -116,14 +287,22 @@ class UploadRepositoryTest {
 
     @Test
     fun resumePendingRequeuesInterruptedUploadsAndSchedulesQueuedItems() = runTest {
+        val stagedFile = File.createTempFile("staging", ".file")
         dao.insert(item("queued", UploadState.QUEUED))
         dao.insert(item("interrupted", UploadState.UPLOADING))
         dao.insert(item("completed", UploadState.COMPLETED))
+        dao.insert(item("staging", UploadState.STAGING, stagedPath = stagedFile.absolutePath))
 
-        repository.resumePending()
+        try {
+            repository.resumePending()
 
-        assertEquals(UploadState.QUEUED, dao.get("interrupted")!!.state)
-        assertEquals(listOf("queued", "interrupted"), scheduler.scheduledIds)
+            assertEquals(UploadState.QUEUED, dao.get("interrupted")!!.state)
+            assertEquals(UploadErrorCode.SHARE_INTERRUPTED, dao.get("staging")!!.errorCode)
+            assertFalse(stagedFile.exists())
+            assertEquals(listOf("queued", "interrupted"), scheduler.scheduledIds)
+        } finally {
+            stagedFile.delete()
+        }
     }
 
     @Test
@@ -169,33 +348,54 @@ class UploadRepositoryTest {
     @Test
     @OptIn(ExperimentalCoroutinesApi::class)
     fun cancelCannotBeFollowedByRetryScheduling() = runTest {
-        dao.insert(item("item-1", UploadState.NEEDS_ATTENTION))
-        val scheduleEntered = CompletableDeferred<Unit>()
-        val allowSchedule = CompletableDeferred<Unit>()
-        scheduler.beforeSchedule = {
-            scheduleEntered.complete(Unit)
-            allowSchedule.await()
+        val stagedFile = File.createTempFile("upload", ".pdf")
+        try {
+            dao.insert(item("item-1", UploadState.NEEDS_ATTENTION, stagedPath = stagedFile.absolutePath))
+            val scheduleEntered = CompletableDeferred<Unit>()
+            val allowSchedule = CompletableDeferred<Unit>()
+            scheduler.beforeSchedule = {
+                scheduleEntered.complete(Unit)
+                allowSchedule.await()
+            }
+
+            val retry = async { repository.retry("item-1") }
+            scheduleEntered.await()
+            val cancel = async { repository.cancel("item-1") }
+            runCurrent()
+            assertEquals(UploadState.QUEUED, dao.get("item-1")!!.state)
+            assertFalse(cancel.isCompleted)
+            allowSchedule.complete(Unit)
+            retry.await()
+            cancel.await()
+
+            assertEquals(UploadState.CANCELLED, dao.get("item-1")!!.state)
+            assertEquals(listOf("schedule:item-1", "cancel:item-1"), scheduler.operations)
+        } finally {
+            stagedFile.delete()
         }
+    }
 
-        val retry = async { repository.retry("item-1") }
-        scheduleEntered.await()
-        val cancel = async { repository.cancel("item-1") }
-        runCurrent()
-        assertEquals(UploadState.QUEUED, dao.get("item-1")!!.state)
-        assertFalse(cancel.isCompleted)
-        allowSchedule.complete(Unit)
-        retry.await()
-        cancel.await()
+    private suspend fun insertStagingItem(): UploadItem = item(
+        "item-1",
+        UploadState.STAGING,
+        stagedPath = "/pending/item-1.staged",
+        errorCode = UploadErrorCode.NONE
+    ).also { dao.insert(it) }
 
-        assertEquals(UploadState.CANCELLED, dao.get("item-1")!!.state)
-        assertEquals(listOf("schedule:item-1", "cancel:item-1"), scheduler.operations)
+    private suspend fun assertIllegalState(block: suspend () -> Unit) {
+        try {
+            block()
+            fail("The operation must be rejected")
+        } catch (_: IllegalStateException) {
+        }
     }
 
     private fun item(
         id: String,
         state: UploadState,
         outputName: String = "report.pdf",
-        stagedPath: String = "/tmp/staged-file"
+        stagedPath: String = "/tmp/staged-file",
+        errorCode: UploadErrorCode = UploadErrorCode.DESTINATION_ACCESS_LOST
     ) = UploadItem(
         id = id,
         originalName = "report.pdf",
@@ -206,15 +406,18 @@ class UploadRepositoryTest {
         createdAtMillis = 1,
         retryCount = 1,
         state = state,
-        errorCode = UploadErrorCode.DESTINATION_ACCESS_LOST
+        errorCode = errorCode
     )
 }
 
 private class FakeUploadDao(private val events: MutableList<String>? = null) : UploadDao {
     private val items = linkedMapOf<String, UploadItem>()
     private val uploads = MutableStateFlow<List<UploadItem>>(emptyList())
+    var insertFailure: Throwable? = null
+    var beforeFailStaging: (suspend (String) -> Unit)? = null
 
     override suspend fun insert(item: UploadItem) {
+        insertFailure?.let { throw it }
         items[item.id] = item
         uploads.value = items.values.toList()
         events?.add("persisted:${item.id}")
@@ -245,6 +448,7 @@ private class FakeUploadDao(private val events: MutableList<String>? = null) : U
     }
 
     override suspend fun failStaging(id: String, errorCode: UploadErrorCode): Int {
+        beforeFailStaging?.invoke(id)
         val item = items[id] ?: return 0
         if (item.state != UploadState.STAGING) return 0
         update(item.copy(state = UploadState.NEEDS_ATTENTION, errorCode = errorCode))
@@ -311,9 +515,11 @@ private class FakeUploadScheduler(private val events: MutableList<String>? = nul
     val cancelledIds = mutableListOf<String>()
     val operations = mutableListOf<String>()
     var beforeSchedule: (suspend () -> Unit)? = null
+    var scheduleFailure: Throwable? = null
 
     override suspend fun schedule(uploadItemId: String) {
         beforeSchedule?.invoke()
+        scheduleFailure?.let { throw it }
         scheduledIds += uploadItemId
         operations += "schedule:$uploadItemId"
         events?.add("scheduled:$uploadItemId")
