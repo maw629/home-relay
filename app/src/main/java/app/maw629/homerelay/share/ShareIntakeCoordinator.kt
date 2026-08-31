@@ -39,7 +39,6 @@ class ShareIntakeCoordinator(
     private val stager: ShareStager,
     private val destinationRepository: DestinationRepository,
     private val uploadRepository: UploadRepository,
-    @Suppress("unused") private val newIntakeId: () -> String,
     private val nowMillis: () -> Long
 ) : ShareIntakeOperations {
     private val operations = mutableMapOf<String, MutableStateFlow<ShareIntakeStatus>>()

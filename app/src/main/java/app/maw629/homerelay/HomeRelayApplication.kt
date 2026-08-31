@@ -71,7 +71,6 @@ class AppContainer(context: Application, applicationScope: CoroutineScope) {
         shareStager,
         destinationStore,
         uploadRepository,
-        { UUID.randomUUID().toString() },
         { System.currentTimeMillis() }
     )
 }

@@ -295,7 +295,6 @@ class ShareIntakeCoordinatorTest {
             stager = stager,
             destinationRepository = destination,
             uploadRepository = repository,
-            newIntakeId = { "unused" },
             nowMillis = { 1_788_013_501_999L }
         )
 
