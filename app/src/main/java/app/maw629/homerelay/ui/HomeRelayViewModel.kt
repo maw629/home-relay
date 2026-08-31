@@ -10,6 +10,7 @@ import app.maw629.homerelay.data.UploadState
 import app.maw629.homerelay.destination.DestinationGateway
 import app.maw629.homerelay.destination.DestinationResult
 import app.maw629.homerelay.domain.UploadRepository
+import app.maw629.homerelay.domain.isRetryable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -32,7 +33,8 @@ data class UploadRow(
     val createdAtMillis: Long,
     val state: UploadState,
     val errorCode: UploadErrorCode,
-    val errorMessage: String?
+    val errorMessage: String?,
+    val canRetry: Boolean
 )
 
 interface PersistableUriPermissionTaker {
@@ -62,7 +64,8 @@ class HomeRelayViewModel(
                     createdAtMillis = upload.createdAtMillis,
                     state = upload.state,
                     errorCode = upload.errorCode,
-                    errorMessage = upload.errorCode.message
+                    errorMessage = upload.errorCode.message,
+                    canRetry = upload.errorCode.isRetryable()
                 )
             }
         }
@@ -111,7 +114,7 @@ private val UploadErrorCode.message: String?
         UploadErrorCode.NONE -> null
         UploadErrorCode.SOURCE_UNREADABLE -> "The staged file is no longer available."
         UploadErrorCode.STAGING_STORAGE_FULL -> "Home Relay needs more storage space."
-        UploadErrorCode.SHARE_INTERRUPTED -> "The shared file could not be prepared. Share it again."
+        UploadErrorCode.SHARE_INTERRUPTED -> "Share the file again."
         UploadErrorCode.DESTINATION_ACCESS_LOST -> "Choose the destination folder again."
         UploadErrorCode.DESTINATION_QUOTA -> "The destination folder has no available storage."
         UploadErrorCode.DESTINATION_POLICY -> "The destination provider rejected this upload."

@@ -41,7 +41,9 @@ fun UploadsScreen(
                 Text(upload.state.name.replace('_', ' '))
                 upload.errorMessage?.let { Text(it) }
                 if (upload.state == UploadState.NEEDS_ATTENTION) {
-                    Button(onClick = { onRetry(upload.id) }) { Text("Retry") }
+                    if (upload.canRetry) {
+                        Button(onClick = { onRetry(upload.id) }) { Text("Retry") }
+                    }
                     if (upload.errorCode == UploadErrorCode.DESTINATION_ACCESS_LOST) {
                         Button(onClick = onChooseFolder) { Text("Choose folder again") }
                     }

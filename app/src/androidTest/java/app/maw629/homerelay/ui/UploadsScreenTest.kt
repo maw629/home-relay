@@ -28,7 +28,8 @@ class UploadsScreenTest {
                         createdAtMillis = 1,
                         state = UploadState.NEEDS_ATTENTION,
                         errorCode = UploadErrorCode.DESTINATION_ACCESS_LOST,
-                        errorMessage = "Choose the destination folder again."
+                        errorMessage = "Choose the destination folder again.",
+                        canRetry = true
                     )
                 ),
                 onRetry = { retriedId = it },
@@ -45,6 +46,32 @@ class UploadsScreenTest {
     }
 
     @Test
+    fun interruptedShareTellsSenderToShareAgainWithoutRetry() {
+        composeRule.setContent {
+            UploadsScreen(
+                uploads = listOf(
+                    UploadRow(
+                        id = "interrupted-share",
+                        name = "report.pdf",
+                        sizeBytes = 42,
+                        createdAtMillis = 1,
+                        state = UploadState.NEEDS_ATTENTION,
+                        errorCode = UploadErrorCode.SHARE_INTERRUPTED,
+                        errorMessage = "Share the file again.",
+                        canRetry = false
+                    )
+                ),
+                onRetry = {},
+                onCancel = {},
+                onChooseFolder = {}
+            )
+        }
+
+        composeRule.onNodeWithText("Share the file again.").assertExists()
+        composeRule.onNodeWithText("Retry").assertDoesNotExist()
+    }
+
+    @Test
     fun queuedUploadInvokesCancelWithItsId() {
         var cancelledId: String? = null
         composeRule.setContent {
@@ -57,7 +84,8 @@ class UploadsScreenTest {
                         createdAtMillis = 1,
                         state = UploadState.QUEUED,
                         errorCode = UploadErrorCode.NONE,
-                        errorMessage = null
+                        errorMessage = null,
+                        canRetry = false
                     )
                 ),
                 onRetry = {},
@@ -83,7 +111,8 @@ class UploadsScreenTest {
                         createdAtMillis = 1,
                         state = UploadState.COMPLETED,
                         errorCode = UploadErrorCode.NONE,
-                        errorMessage = null
+                        errorMessage = null,
+                        canRetry = false
                     )
                 ),
                 onRetry = {},
@@ -108,7 +137,8 @@ class UploadsScreenTest {
                         createdAtMillis = 1_788_013_501_000,
                         state = UploadState.NEEDS_ATTENTION,
                         errorCode = UploadErrorCode.DESTINATION_ACCESS_LOST,
-                        errorMessage = "Choose the destination folder again."
+                        errorMessage = "Choose the destination folder again.",
+                        canRetry = true
                     )
                 ),
                 onRetry = {},

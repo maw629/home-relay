@@ -23,6 +23,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -127,7 +128,7 @@ class HomeRelayViewModelTest {
     }
 
     @Test
-    fun interruptedShareShowsAnActionableError() = runTest {
+    fun interruptedShareTellsSenderToShareAgainWithoutRetry() = runTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val dao = EmptyUploadDao()
         dao.insert(
@@ -150,10 +151,10 @@ class HomeRelayViewModelTest {
             dao
         )
 
-        assertEquals(
-            "The shared file could not be prepared. Share it again.",
-            viewModel.uploads.first { it.isNotEmpty() }.single().errorMessage
-        )
+        val row = viewModel.uploads.first { it.isNotEmpty() }.single()
+
+        assertEquals("Share the file again.", row.errorMessage)
+        assertFalse(row.canRetry)
     }
 
     private fun viewModel(
