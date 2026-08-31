@@ -141,7 +141,6 @@ class UploadRepository(
 
     suspend fun resumePending() {
         operationMutex.withLock {
-            recoverInterruptedStaging()
             dao.requeueInterruptedUploads()
             dao.queuedIds().forEach { scheduler.schedule(it) }
         }

@@ -13,6 +13,7 @@ import app.maw629.homerelay.destination.AndroidDocumentTreeGateway
 import app.maw629.homerelay.domain.UploadRepository
 import app.maw629.homerelay.notifications.UploadNotifier
 import app.maw629.homerelay.share.AndroidShareStager
+import app.maw629.homerelay.share.ShareIntakeCoordinator
 import app.maw629.homerelay.work.WorkManagerUploadScheduler
 import app.maw629.homerelay.work.UploadWorker
 import java.util.UUID
@@ -29,7 +30,10 @@ class HomeRelayApplication : Application(), Configuration.Provider {
         super.onCreate()
         initializeContainer()
         container.uploadNotifier.createChannel()
-        applicationScope.launch { container.uploadRepository.resumePending() }
+        applicationScope.launch {
+            container.shareIntakeCoordinator.recoverInterruptedStaging()
+            container.uploadRepository.resumePending()
+        }
     }
 
     override val workManagerConfiguration: Configuration
@@ -38,12 +42,12 @@ class HomeRelayApplication : Application(), Configuration.Provider {
             .build()
 
     private fun initializeContainer(): AppContainer {
-        if (!::container.isInitialized) container = AppContainer(this)
+        if (!::container.isInitialized) container = AppContainer(this, applicationScope)
         return container
     }
 }
 
-class AppContainer(context: Application) {
+class AppContainer(context: Application, applicationScope: CoroutineScope) {
     val database: HomeRelayDatabase = Room.databaseBuilder(
         context,
         HomeRelayDatabase::class.java,
@@ -61,6 +65,14 @@ class AppContainer(context: Application) {
         { System.currentTimeMillis() },
         { UUID.randomUUID().toString().take(8) },
         uploadNotifier
+    )
+    val shareIntakeCoordinator = ShareIntakeCoordinator(
+        applicationScope,
+        shareStager,
+        destinationStore,
+        uploadRepository,
+        { UUID.randomUUID().toString() },
+        { System.currentTimeMillis() }
     )
 }
 

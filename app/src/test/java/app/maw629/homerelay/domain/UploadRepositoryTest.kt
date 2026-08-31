@@ -306,7 +306,7 @@ class UploadRepositoryTest {
     }
 
     @Test
-    fun resumePendingRequeuesInterruptedUploadsAndSchedulesQueuedItems() = runTest {
+    fun resumePendingDoesNotRecoverStagingRowsAndSchedulesOnlyQueuedItems() = runTest {
         val stagedFile = File.createTempFile("staging", ".file")
         dao.insert(item("queued", UploadState.QUEUED))
         dao.insert(item("interrupted", UploadState.UPLOADING))
@@ -317,8 +317,8 @@ class UploadRepositoryTest {
             repository.resumePending()
 
             assertEquals(UploadState.QUEUED, dao.get("interrupted")!!.state)
-            assertEquals(UploadErrorCode.SHARE_INTERRUPTED, dao.get("staging")!!.errorCode)
-            assertFalse(stagedFile.exists())
+            assertEquals(UploadState.STAGING, dao.get("staging")!!.state)
+            assertTrue(stagedFile.exists())
             assertEquals(listOf("queued", "interrupted"), scheduler.scheduledIds)
         } finally {
             stagedFile.delete()
