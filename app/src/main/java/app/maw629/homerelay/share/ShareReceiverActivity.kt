@@ -86,6 +86,7 @@ class ShareReceiverActivity : ComponentActivity() {
                             "timer_started",
                             "displayStart=$displayStartUptime duration=${BuildConfig.SHARE_STATUS_DISPLAY_MILLIS}"
                         )
+                        ShareReceiverDiagnostics.probeHandler(BuildConfig.SHARE_STATUS_DISPLAY_MILLIS)
                         waitForTerminalDisplay(
                             terminalAtElapsedMillis = displayStartUptime,
                             displayDurationMillis = BuildConfig.SHARE_STATUS_DISPLAY_MILLIS,

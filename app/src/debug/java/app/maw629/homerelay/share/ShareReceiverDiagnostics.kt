@@ -1,5 +1,7 @@
 package app.maw629.homerelay.share
 
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
 
@@ -20,6 +22,13 @@ internal object ShareReceiverDiagnostics {
 
     @Synchronized
     fun snapshot(): String = events.joinToString(separator = " | ")
+
+    fun probeHandler(delayMillis: Long) {
+        Handler(Looper.getMainLooper()).postDelayed(
+            { event("handler_fired", "delay=$delayMillis") },
+            delayMillis
+        )
+    }
 
     private const val MAXIMUM_RECORDED_EVENTS = 32
 }
