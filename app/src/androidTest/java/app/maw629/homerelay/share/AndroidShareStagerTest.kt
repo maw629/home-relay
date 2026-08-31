@@ -6,6 +6,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.io.File
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -16,41 +17,60 @@ class AndroidShareStagerTest {
     private val stager = AndroidShareStager(context)
 
     @Test
-    fun stageCopiesProviderBytesIntoNoBackupStorage() = runTest {
+    fun stageWritesToCallerOwnedTargetRatherThanGeneratingAnUnstoredName() = runTest {
+        val target = stager.pendingFile("item-1")
+        target.delete()
+
         val result = stager.stage(
-            "item-1",
+            target,
             IncomingShare(
                 Uri.parse("content://app.maw629.homerelay.share-test/report.pdf"),
-                "ignored-name.pdf",
+                "report.pdf",
                 "application/pdf"
             )
         )
 
         assertTrue(result is StageResult.Staged)
         result as StageResult.Staged
-        assertEquals("hello", result.file.readText())
+        assertEquals(target.canonicalFile, result.file.canonicalFile)
+        assertEquals("hello", target.readText())
         assertEquals(5, result.byteSize)
-        assertEquals(File(context.noBackupFilesDir, "pending").canonicalFile, result.file.parentFile?.canonicalFile)
+        assertEquals(
+            File(context.noBackupFilesDir, "pending").canonicalFile,
+            target.parentFile?.canonicalFile
+        )
+        assertEquals("item-1.staged", target.name)
     }
 
     @Test
-    fun stageUnreadableUriReturnsSourceUnreadable() = runTest {
+    fun stageFailureRemovesCallerOwnedTargetAndPartial() = runTest {
+        val target = stager.pendingFile("item-2")
+        target.parentFile!!.mkdirs()
+        target.writeText("stale target")
+
         val result = stager.stage(
-            "item-2",
+            target,
             IncomingShare(
-                Uri.parse("content://missing.provider/report.pdf"),
+                Uri.parse("content://app.maw629.homerelay.share-test/failed-stream.pdf"),
                 "report.pdf",
                 "application/pdf"
             )
         )
 
         assertEquals(StageResult.SourceUnreadable, result)
+        assertFalse(target.exists())
+        assertTrue(
+            target.parentFile?.listFiles().orEmpty().none {
+                it.name.startsWith("${target.name}.") && it.name.endsWith(".partial")
+            }
+        )
     }
 
     @Test
     fun stageRejectsNonContentUriBeforeOpeningIt() = runTest {
+        val target = stager.pendingFile("item-file")
         val result = stager.stage(
-            "item-file",
+            target,
             IncomingShare(Uri.parse("file:///tmp/report.pdf"), "report.pdf", "application/pdf")
         )
 
@@ -59,8 +79,9 @@ class AndroidShareStagerTest {
 
     @Test
     fun stageMissingProviderDisplayNameUsesSharedFile() = runTest {
+        val target = stager.pendingFile("item-3")
         val result = stager.stage(
-            "item-3",
+            target,
             IncomingShare(
                 Uri.parse("content://app.maw629.homerelay.share-test/missing-display-name"),
                 "caller-name.pdf",
@@ -69,13 +90,14 @@ class AndroidShareStagerTest {
         )
 
         assertTrue(result is StageResult.Staged)
-        assertEquals("item-3-shared-file", (result as StageResult.Staged).file.name)
+        assertEquals("shared-file", (result as StageResult.Staged).displayName)
     }
 
     @Test
     fun stageUsesProviderDisplayNameInsteadOfUriPath() = runTest {
+        val target = stager.pendingFile("item-4")
         val result = stager.stage(
-            "item-4",
+            target,
             IncomingShare(
                 Uri.parse("content://app.maw629.homerelay.share-test/opaque-id"),
                 "opaque-id",

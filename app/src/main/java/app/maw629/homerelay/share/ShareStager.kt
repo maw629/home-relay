@@ -17,23 +17,29 @@ sealed interface StageResult {
 }
 
 interface ShareStager {
-    suspend fun stage(id: String, share: IncomingShare): StageResult
+    fun pendingFile(id: String): File
+    suspend fun stage(target: File, share: IncomingShare): StageResult
 }
 
 class AndroidShareStager(private val context: Context) : ShareStager {
-    override suspend fun stage(id: String, share: IncomingShare): StageResult = withContext(Dispatchers.IO) {
-        if (share.uri.scheme != "content") return@withContext StageResult.SourceUnreadable
-        val pendingDirectory = File(context.noBackupFilesDir, "pending")
-        if (!pendingDirectory.exists() && !pendingDirectory.mkdirs()) {
-            return@withContext StageResult.StorageFull
-        }
+    override fun pendingFile(id: String): File = File(
+        File(context.noBackupFilesDir, "pending"),
+        "${safeName(id, "item")}.staged"
+    )
 
-        val displayName = resolveDisplayName(share.uri) ?: "shared-file"
-        val target = File(pendingDirectory, "${safeName(id, "item")}-${safeName(displayName, "shared-file")}")
+    override suspend fun stage(target: File, share: IncomingShare): StageResult = withContext(Dispatchers.IO) {
         var temporary: File? = null
+        var staged = false
 
         try {
-            temporary = File.createTempFile("${safeName(id, "item")}-", ".partial", pendingDirectory)
+            if (share.uri.scheme != "content") return@withContext StageResult.SourceUnreadable
+            val pendingDirectory = target.parentFile ?: return@withContext StageResult.StorageFull
+            if (!pendingDirectory.exists() && !pendingDirectory.mkdirs()) {
+                return@withContext StageResult.StorageFull
+            }
+
+            val displayName = resolveDisplayName(share.uri) ?: "shared-file"
+            temporary = File.createTempFile("${target.name}.", ".partial", pendingDirectory)
             val byteSize = context.contentResolver.openInputStream(share.uri)?.use { input ->
                 temporary.outputStream().buffered().use { output -> input.copyTo(output) }
             } ?: return@withContext StageResult.SourceUnreadable
@@ -41,6 +47,7 @@ class AndroidShareStager(private val context: Context) : ShareStager {
             if (target.exists() && !target.delete()) return@withContext StageResult.StorageFull
             if (!temporary.renameTo(target)) return@withContext StageResult.StorageFull
             temporary = null
+            staged = true
             StageResult.Staged(target, byteSize, displayName)
         } catch (error: IOException) {
             if (isStorageFull(error)) StageResult.StorageFull else StageResult.SourceUnreadable
@@ -48,6 +55,7 @@ class AndroidShareStager(private val context: Context) : ShareStager {
             StageResult.SourceUnreadable
         } finally {
             temporary?.delete()
+            if (!staged) target.delete()
         }
     }
 

@@ -41,7 +41,8 @@ class ShareReceiverActivity : ComponentActivity() {
 
         var queuedCount = 0
         for (share in shares) {
-            when (val result = container.shareStager.stage(UUID.randomUUID().toString(), share)) {
+            val target = container.shareStager.pendingFile(UUID.randomUUID().toString())
+            when (val result = container.shareStager.stage(target, share)) {
                 is StageResult.Staged -> {
                     container.uploadRepository.enqueue(result, share)
                     queuedCount++
