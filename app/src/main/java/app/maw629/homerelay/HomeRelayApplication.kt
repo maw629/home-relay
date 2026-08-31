@@ -16,14 +16,20 @@ import app.maw629.homerelay.share.AndroidShareStager
 import app.maw629.homerelay.work.WorkManagerUploadScheduler
 import app.maw629.homerelay.work.UploadWorker
 import java.util.UUID
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 class HomeRelayApplication : Application(), Configuration.Provider {
     lateinit var container: AppContainer
+    private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onCreate() {
         super.onCreate()
         initializeContainer()
         container.uploadNotifier.createChannel()
+        applicationScope.launch { container.uploadRepository.resumePending() }
     }
 
     override val workManagerConfiguration: Configuration
@@ -53,7 +59,8 @@ class AppContainer(context: Application) {
         uploadScheduler,
         { UUID.randomUUID().toString() },
         { System.currentTimeMillis() },
-        { UUID.randomUUID().toString().take(8) }
+        { UUID.randomUUID().toString().take(8) },
+        uploadNotifier
     )
 }
 

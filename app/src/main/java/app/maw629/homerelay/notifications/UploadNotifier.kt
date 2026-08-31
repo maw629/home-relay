@@ -13,6 +13,8 @@ import app.maw629.homerelay.data.UploadItem
 
 interface UploadNotificationSink {
     fun foregroundInfo(item: UploadItem, copied: Long, total: Long): ForegroundInfo
+    fun queued(item: UploadItem)
+    fun uploading(item: UploadItem)
     fun completed(item: UploadItem)
     fun needsAttention(item: UploadItem, error: UploadErrorCode)
 }
@@ -45,6 +47,10 @@ class UploadNotifier(private val context: Context) : UploadNotificationSink {
             ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
         )
     }
+
+    override fun queued(item: UploadItem) = post(item.id.hashCode(), "Queued for Home Relay", item.originalName)
+
+    override fun uploading(item: UploadItem) = post(item.id.hashCode(), "Uploading to Home Relay", item.originalName)
 
     override fun completed(item: UploadItem) = post(item.id.hashCode(), "Saved to Home Relay", item.originalName)
 

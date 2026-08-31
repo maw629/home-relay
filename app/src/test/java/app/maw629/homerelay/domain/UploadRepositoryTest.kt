@@ -7,6 +7,8 @@ import app.maw629.homerelay.data.UploadState
 import app.maw629.homerelay.share.IncomingShare
 import app.maw629.homerelay.share.StageResult
 import app.maw629.homerelay.work.UploadScheduler
+import app.maw629.homerelay.notifications.UploadNotificationSink
+import androidx.work.ForegroundInfo
 import java.io.File
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.CompletableDeferred
@@ -54,7 +56,7 @@ class UploadRepositoryTest {
         val stagedFile = File.createTempFile("upload", ".pdf")
         try {
             val id = repository.enqueue(
-                StageResult.Staged(stagedFile, 42),
+                StageResult.Staged(stagedFile, 42, "report.pdf"),
                 IncomingShare(android.net.Uri.EMPTY, "report.pdf", "application/pdf")
             )
 
@@ -66,6 +68,62 @@ class UploadRepositoryTest {
         } finally {
             stagedFile.delete()
         }
+    }
+
+    @Test
+    fun enqueueUsesTheStagedProviderDisplayNameForPersistedNames() = runTest {
+        val stagedFile = File.createTempFile("upload", ".pdf")
+        try {
+            val id = repository.enqueue(
+                StageResult.Staged(stagedFile, 42, "provider-report.pdf"),
+                IncomingShare(android.net.Uri.parse("content://sender/opaque-id"), "opaque-id", "application/pdf")
+            )
+
+            val item = dao.get(id)!!
+            assertEquals("provider-report.pdf", item.originalName)
+            assertEquals("20260829-142501-a1b2c3-provider-report.pdf", item.outputName)
+        } finally {
+            stagedFile.delete()
+        }
+    }
+
+    @Test
+    fun enqueuePostsQueuedStatusAfterPersistingAndScheduling() = runTest {
+        val events = mutableListOf<String>()
+        val dao = FakeUploadDao(events)
+        val scheduler = FakeUploadScheduler(events)
+        val notifier = RecordingNotifier(events)
+        val repository = UploadRepository(
+            dao, scheduler, { "queued-item" }, { 1_788_013_501_000 }, { "a1b2c3" }, notifier
+        )
+        val stagedFile = File.createTempFile("upload", ".pdf")
+        try {
+            repository.enqueue(
+                StageResult.Staged(stagedFile, 42, "report.pdf"),
+                IncomingShare(android.net.Uri.parse("content://sender/report"), "report.pdf", "application/pdf")
+            )
+
+            assertEquals("queued-item", notifier.queuedIds.single())
+            assertEquals(UploadState.QUEUED, dao.get("queued-item")!!.state)
+            assertEquals(
+                listOf("persisted:queued-item", "scheduled:queued-item", "queued:queued-item"),
+                events
+            )
+        } finally {
+            stagedFile.delete()
+        }
+    }
+
+    @Test
+    fun resumePendingRequeuesInterruptedUploadsAndSchedulesQueuedItems() = runTest {
+        dao.insert(item("queued", UploadState.QUEUED))
+        dao.insert(item("interrupted", UploadState.UPLOADING))
+        dao.insert(item("completed", UploadState.COMPLETED))
+
+        repository.resumePending()
+
+        assertEquals(UploadState.QUEUED, dao.get("interrupted")!!.state)
+        assertEquals(listOf("queued", "interrupted"), scheduler.scheduledIds)
     }
 
     @Test
@@ -152,13 +210,14 @@ class UploadRepositoryTest {
     )
 }
 
-private class FakeUploadDao : UploadDao {
+private class FakeUploadDao(private val events: MutableList<String>? = null) : UploadDao {
     private val items = linkedMapOf<String, UploadItem>()
     private val uploads = MutableStateFlow<List<UploadItem>>(emptyList())
 
     override suspend fun insert(item: UploadItem) {
         items[item.id] = item
         uploads.value = items.values.toList()
+        events?.add("persisted:${item.id}")
     }
 
     override fun observeAll(): Flow<List<UploadItem>> = uploads
@@ -176,6 +235,23 @@ private class FakeUploadDao : UploadDao {
     }
 
     override suspend fun beginUpload(id: String): Int = TODO("Not implemented")
+
+    override suspend fun requeueInterruptedUploads(): Int {
+        val interrupted = items.values.filter { it.state == UploadState.UPLOADING }
+        interrupted.forEach { update(it.copy(state = UploadState.QUEUED)) }
+        return interrupted.size
+    }
+
+    override suspend fun requeueInterruptedUpload(id: String): Int {
+        val item = items[id] ?: return 0
+        if (item.state != UploadState.UPLOADING) return 0
+        update(item.copy(state = UploadState.QUEUED))
+        return 1
+    }
+
+    override suspend fun queuedIds(): List<String> = items.values
+        .filter { it.state == UploadState.QUEUED }
+        .map { it.id }
 
     override suspend fun finishUpload(
         id: String,
@@ -199,7 +275,7 @@ private class FakeUploadDao : UploadDao {
     }
 }
 
-private class FakeUploadScheduler : UploadScheduler {
+private class FakeUploadScheduler(private val events: MutableList<String>? = null) : UploadScheduler {
     val scheduledIds = mutableListOf<String>()
     val cancelledIds = mutableListOf<String>()
     val operations = mutableListOf<String>()
@@ -209,10 +285,27 @@ private class FakeUploadScheduler : UploadScheduler {
         beforeSchedule?.invoke()
         scheduledIds += uploadItemId
         operations += "schedule:$uploadItemId"
+        events?.add("scheduled:$uploadItemId")
     }
 
     override suspend fun cancel(uploadItemId: String) {
         cancelledIds += uploadItemId
         operations += "cancel:$uploadItemId"
     }
+}
+
+private class RecordingNotifier(private val events: MutableList<String>? = null) : UploadNotificationSink {
+    val queuedIds = mutableListOf<String>()
+
+    override fun foregroundInfo(item: UploadItem, copied: Long, total: Long): ForegroundInfo =
+        ForegroundInfo(1, android.app.Notification())
+
+    override fun queued(item: UploadItem) {
+        queuedIds += item.id
+        events?.add("queued:${item.id}")
+    }
+
+    override fun uploading(item: UploadItem) = Unit
+    override fun completed(item: UploadItem) = Unit
+    override fun needsAttention(item: UploadItem, error: UploadErrorCode) = Unit
 }

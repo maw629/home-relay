@@ -11,7 +11,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 sealed interface StageResult {
-    data class Staged(val file: File, val byteSize: Long) : StageResult
+    data class Staged(val file: File, val byteSize: Long, val displayName: String) : StageResult
     data object SourceUnreadable : StageResult
     data object StorageFull : StageResult
 }
@@ -22,6 +22,7 @@ interface ShareStager {
 
 class AndroidShareStager(private val context: Context) : ShareStager {
     override suspend fun stage(id: String, share: IncomingShare): StageResult = withContext(Dispatchers.IO) {
+        if (share.uri.scheme != "content") return@withContext StageResult.SourceUnreadable
         val pendingDirectory = File(context.noBackupFilesDir, "pending")
         if (!pendingDirectory.exists() && !pendingDirectory.mkdirs()) {
             return@withContext StageResult.StorageFull
@@ -40,7 +41,7 @@ class AndroidShareStager(private val context: Context) : ShareStager {
             if (target.exists() && !target.delete()) return@withContext StageResult.StorageFull
             if (!temporary.renameTo(target)) return@withContext StageResult.StorageFull
             temporary = null
-            StageResult.Staged(target, byteSize)
+            StageResult.Staged(target, byteSize, displayName)
         } catch (error: IOException) {
             if (isStorageFull(error)) StageResult.StorageFull else StageResult.SourceUnreadable
         } catch (_: SecurityException) {

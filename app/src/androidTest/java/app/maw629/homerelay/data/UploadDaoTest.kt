@@ -10,6 +10,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.io.File
+import java.util.UUID
 
 @RunWith(AndroidJUnit4::class)
 class UploadDaoTest {
@@ -35,6 +37,26 @@ class UploadDaoTest {
         dao.insert(sampleUpload(state = UploadState.QUEUED))
 
         assertEquals(UploadState.QUEUED, dao.observeAll().first().single().state)
+    }
+
+    @Test
+    fun reopeningPersistentQueueRequeuesInterruptedUploadsForRescheduling() = runTest {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val file = File(context.cacheDir, "upload-dao-${UUID.randomUUID()}.db")
+        database.close()
+        database = Room.databaseBuilder(context, HomeRelayDatabase::class.java, file.absolutePath).build()
+        dao = database.uploadDao()
+        dao.insert(sampleUpload(state = UploadState.UPLOADING))
+        database.close()
+
+        database = Room.databaseBuilder(context, HomeRelayDatabase::class.java, file.absolutePath).build()
+        dao = database.uploadDao()
+
+        assertEquals(1, dao.requeueInterruptedUploads())
+        assertEquals(listOf("upload-1"), dao.queuedIds())
+        assertEquals(UploadState.QUEUED, dao.get("upload-1")!!.state)
+        database.close()
+        file.delete()
     }
 
     private fun sampleUpload(state: UploadState) = UploadItem(

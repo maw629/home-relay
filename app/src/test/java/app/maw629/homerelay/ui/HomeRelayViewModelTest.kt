@@ -77,6 +77,55 @@ class HomeRelayViewModelTest {
         )
     }
 
+    @Test
+    fun failedValidationReleasesTheNewlyAcquiredGrant() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val permissionTaker = RecordingPermissionTaker()
+        val viewModel = viewModel(
+            FakeDestinationRepository("content://old"),
+            FakeDestinationGateway(DestinationResult.AccessLost)
+        )
+
+        viewModel.selectDestination(Uri.parse("content://new/tree/drive"), permissionTaker)
+        advanceUntilIdle()
+
+        assertEquals(
+            listOf("take:content://new/tree/drive", "release:content://new/tree/drive"),
+            permissionTaker.operations
+        )
+    }
+
+    @Test
+    fun failedValidationOfTheStoredUriRetainsItsExistingGrant() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val storedUri = "content://old/tree/drive"
+        val store = FakeDestinationRepository(storedUri)
+        val permissionTaker = RecordingPermissionTaker(retainedGrant = storedUri)
+        val viewModel = viewModel(store, FakeDestinationGateway(DestinationResult.AccessLost))
+
+        viewModel.selectDestination(Uri.parse(storedUri), permissionTaker)
+        advanceUntilIdle()
+
+        assertEquals(storedUri, store.currentDestination)
+        assertEquals(setOf(storedUri), permissionTaker.retainedGrants)
+        assertEquals(listOf("take:$storedUri"), permissionTaker.operations)
+    }
+
+    @Test
+    fun successfulReplacementReleasesThePreviousGrantAfterPersistence() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val store = FakeDestinationRepository("content://old")
+        val permissionTaker = RecordingPermissionTaker(destination = { store.currentDestination })
+        val viewModel = viewModel(store, FakeDestinationGateway(DestinationResult.Success))
+
+        viewModel.selectDestination(Uri.parse("content://new/tree/drive"), permissionTaker)
+        advanceUntilIdle()
+
+        assertEquals("content://new/tree/drive", store.currentDestination)
+        assertEquals(listOf("take:content://new/tree/drive", "release:content://old"), permissionTaker.operations)
+        assertEquals(listOf("content://new/tree/drive"), permissionTaker.destinationWhenReleased)
+    }
+
     private fun viewModel(
         store: DestinationRepository,
         gateway: DestinationGateway
@@ -87,8 +136,24 @@ class HomeRelayViewModelTest {
             UploadRepository(EmptyUploadDao(), NoOpUploadScheduler(), { "id" }, { 0L }, { "suffix" })
         )
 
-    private class RecordingPermissionTaker : PersistableUriPermissionTaker {
-        override fun takePersistableUriPermission(uri: Uri) = Unit
+    private class RecordingPermissionTaker(
+        private val destination: (() -> String?)? = null,
+        retainedGrant: String? = null
+    ) : PersistableUriPermissionTaker {
+        val operations = mutableListOf<String>()
+        val destinationWhenReleased = mutableListOf<String?>()
+        val retainedGrants = retainedGrant?.let(::setOf)?.toMutableSet() ?: mutableSetOf()
+
+        override fun takePersistableUriPermission(uri: Uri) {
+            operations += "take:$uri"
+            retainedGrants += uri.toString()
+        }
+
+        override fun releasePersistableUriPermission(uri: Uri) {
+            operations += "release:$uri"
+            retainedGrants -= uri.toString()
+            destination?.let { destinationWhenReleased += it() }
+        }
     }
 
     private class FakeDestinationGateway(var result: DestinationResult) : DestinationGateway {
@@ -105,6 +170,7 @@ class HomeRelayViewModelTest {
 
     private class FakeDestinationRepository(initialDestination: String?) : DestinationRepository {
         private val destination = MutableStateFlow(initialDestination)
+        val currentDestination: String? get() = destination.value
         override val destinationTreeUri: Flow<String?> = destination
 
         override suspend fun setDestination(uri: String) {
@@ -123,6 +189,9 @@ class HomeRelayViewModelTest {
         override suspend fun get(id: String): UploadItem? = null
         override suspend fun update(item: UploadItem) = Unit
         override suspend fun beginUpload(id: String): Int = 0
+        override suspend fun requeueInterruptedUploads(): Int = 0
+        override suspend fun requeueInterruptedUpload(id: String): Int = 0
+        override suspend fun queuedIds(): List<String> = emptyList()
         override suspend fun finishUpload(id: String, state: UploadState, errorCode: UploadErrorCode, retryCount: Int): Int = 0
         override suspend fun retry(id: String, outputName: String, retryCount: Int): Int = 0
         override suspend fun cancel(id: String): Int = 0

@@ -48,4 +48,18 @@ class ShareIntentParserTest {
 
         assertEquals(listOf(first, second), ShareIntentParser.parse(intent).map(IncomingShare::uri))
     }
+
+    @Test
+    fun parseRejectsFileAndOtherNonContentUris() {
+        val content = Uri.parse("content://sender/report")
+        val intent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+            type = "application/pdf"
+            putParcelableArrayListExtra(
+                Intent.EXTRA_STREAM,
+                arrayListOf(content, Uri.parse("file:///tmp/report.pdf"), Uri.parse("https://example.test/report.pdf"))
+            )
+        }
+
+        assertEquals(listOf(content), ShareIntentParser.parse(intent).map(IncomingShare::uri))
+    }
 }

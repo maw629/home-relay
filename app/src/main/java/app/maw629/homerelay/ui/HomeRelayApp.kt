@@ -41,11 +41,18 @@ fun HomeRelayApp(viewModel: HomeRelayViewModel) {
     }
     val treePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         uri?.let {
-            viewModel.selectDestination(it) { selectedUri ->
-                val flags = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+            viewModel.selectDestination(it, object : PersistableUriPermissionTaker {
+                private val flags = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
                     android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-                context.contentResolver.takePersistableUriPermission(selectedUri, flags)
-            }
+
+                override fun takePersistableUriPermission(uri: android.net.Uri) {
+                    context.contentResolver.takePersistableUriPermission(uri, flags)
+                }
+
+                override fun releasePersistableUriPermission(uri: android.net.Uri) {
+                    context.contentResolver.releasePersistableUriPermission(uri, flags)
+                }
+            })
         }
     }
     val notificationPermission = rememberLauncherForActivityResult(

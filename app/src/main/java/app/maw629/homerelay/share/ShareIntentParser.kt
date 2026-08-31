@@ -12,7 +12,7 @@ object ShareIntentParser {
 
         val uris = linkedMapOf<String, Uri>()
         fun add(uri: Uri?) {
-            if (uri != null) uris.putIfAbsent(uri.toString(), uri)
+            if (uri?.scheme == "content") uris.putIfAbsent(uri.toString(), uri)
         }
 
         if (intent.action == Intent.ACTION_SEND) {
