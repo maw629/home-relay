@@ -33,20 +33,21 @@ class ShareReceiverActivityTimingTest {
 
         waitForTerminalDisplay(
             terminalAtElapsedMillis = 10L,
-            displayDurationMillis = 100L,
+            displayDurationMillis = 2L * 86_400_000L,
             nowMillis = { nowMillis },
             delayMillis = { delayMillis ->
                 delays += delayMillis
-                nowMillis += delayMillis + 1L
+                nowMillis += 2L * 86_400_000L + 1L
             }
         )
 
-        assertEquals(listOf(100L), delays)
+        assertEquals(listOf(86_400_000L), delays)
     }
 
     @Test
-    fun chunkedTerminalWaitUsesActiveUptimeInsteadOfSleepElapsedTime() = runTest {
+    fun chunkedTerminalWaitUsesActiveUptimeWhenElapsedTimeAdvancesDuringSleep() = runTest {
         var uptimeMillis = 10L
+        var elapsedRealtimeMillis = 10L
         val delays = mutableListOf<Long>()
 
         waitForTerminalDisplay(
@@ -55,15 +56,31 @@ class ShareReceiverActivityTimingTest {
             nowMillis = { uptimeMillis },
             delayMillis = { delayMillis ->
                 delays += delayMillis
+                elapsedRealtimeMillis += 10_000L
                 uptimeMillis += delayMillis
             }
         )
 
         assertEquals(
-            "Deep sleep does not advance uptime, so the full active display duration remains",
+            "Elapsed time may advance during sleep while the uptime-based timer waits only for active time",
             listOf(100L),
             delays
         )
+        assertEquals(10_010L, elapsedRealtimeMillis)
+    }
+
+    @Test
+    fun zeroDurationFinishesWithoutSchedulingADelay() = runTest {
+        var delayCalls = 0
+
+        waitForTerminalDisplay(
+            terminalAtElapsedMillis = 10L,
+            displayDurationMillis = 0L,
+            nowMillis = { 10L },
+            delayMillis = { delayCalls++ }
+        )
+
+        assertEquals(0, delayCalls)
     }
 
     @Test
