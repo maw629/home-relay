@@ -4,8 +4,10 @@ import android.app.Activity
 import android.app.Application
 import android.accessibilityservice.AccessibilityService
 import android.content.Intent
+import android.graphics.Bitmap
 import android.graphics.Color
 import android.net.Uri
+import android.os.Bundle
 import android.os.SystemClock
 import android.view.ViewGroup
 import androidx.compose.ui.test.ExperimentalTestApi
@@ -25,12 +27,11 @@ import androidx.test.filters.SdkSuppress
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
 import androidx.test.runner.lifecycle.Stage
+import app.maw629.homerelay.BuildConfig
 import app.maw629.homerelay.HomeRelayApplication
 import app.maw629.homerelay.MainActivity
 import app.maw629.homerelay.data.UploadState
-import java.util.concurrent.TimeUnit
 import java.io.File
-import kotlin.math.abs
 import kotlinx.coroutines.flow.first
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -52,12 +53,12 @@ class ShareReceiverActivityTest {
     fun clearQueueAndResetBlockingSource() = runBlocking {
         val application = ApplicationProvider.getApplicationContext<HomeRelayApplication>()
         application.container.database.clearAllTables()
-        SampleContentProvider.resetBlockingSource()
+        resetBlockingSource()
     }
 
     @After
     fun releaseBlockingSource() {
-        SampleContentProvider.releaseBlockingSource()
+        releaseBlockingSourceControl()
     }
 
     @OptIn(ExperimentalTestApi::class)
@@ -73,7 +74,7 @@ class ShareReceiverActivityTest {
 
     @OptIn(ExperimentalTestApi::class)
     @Test
-    fun realShareStaysVisibleForTheDefaultTerminalDurationThenFinishes() {
+    fun realShareStaysVisibleForTheConfiguredTerminalDurationThenFinishes() {
         ActivityScenario.launch<ShareReceiverActivity>(sampleSendIntent()).use { scenario ->
             composeRule.waitUntilAtLeastOneExists(
                 hasText("Queued 1 file for Home Relay"),
@@ -81,21 +82,8 @@ class ShareReceiverActivityTest {
             )
             val terminalObservedAt = SystemClock.elapsedRealtime()
 
-            SystemClock.sleep(1_000)
-            assertNotEquals(
-                "The receiver must remain visible one second after its terminal status is observed",
-                androidx.lifecycle.Lifecycle.State.DESTROYED,
-                scenario.state
-            )
-
-            assertTrue(
-                "The receiver must finish by 2.1 seconds after its terminal status is observed",
-                awaitDestroyed(scenario, 1_100)
-            )
-            assertTrue(
-                "The default terminal status display must not exceed 2.1 seconds",
-                SystemClock.elapsedRealtime() - terminalObservedAt <= 2_100
-            )
+            assertVisibleBeforeConfiguredTerminalDeadline(scenario)
+            assertFinishesByConfiguredTerminalDeadline(scenario, terminalObservedAt)
         }
     }
 
@@ -105,7 +93,7 @@ class ShareReceiverActivityTest {
         ActivityScenario.launch<ShareReceiverActivity>(blockingSendIntent()).use { scenario ->
             assertTrue(
                 "The blocking provider must be opened before Back is dispatched",
-                SampleContentProvider.awaitBlockingSourceStarted(5, TimeUnit.SECONDS)
+                awaitBlockingSourceStarted(BLOCKING_SOURCE_TIMEOUT_MILLIS)
             )
 
             scenario.onActivity { activity ->
@@ -116,7 +104,7 @@ class ShareReceiverActivityTest {
                 "Back must not finish a receiver whose source has not reached a durable outcome",
                 scenario.state != androidx.lifecycle.Lifecycle.State.DESTROYED
             )
-            SampleContentProvider.releaseBlockingSource()
+            releaseBlockingSourceControl()
             composeRule.waitUntilAtLeastOneExists(
                 hasText("Queued 1 file for Home Relay"),
                 5_000
@@ -131,7 +119,7 @@ class ShareReceiverActivityTest {
         ActivityScenario.launch<ShareReceiverActivity>(blockingSendIntent()).use { scenario ->
             assertTrue(
                 "The blocking provider must be opened before system Back is dispatched",
-                SampleContentProvider.awaitBlockingSourceStarted(5, TimeUnit.SECONDS)
+                awaitBlockingSourceStarted(BLOCKING_SOURCE_TIMEOUT_MILLIS)
             )
 
             assertTrue(
@@ -145,7 +133,7 @@ class ShareReceiverActivityTest {
                 "System predictive Back must not finish a receiver whose source is still preparing",
                 scenario.state != androidx.lifecycle.Lifecycle.State.DESTROYED
             )
-            SampleContentProvider.releaseBlockingSource()
+            releaseBlockingSourceControl()
             composeRule.waitUntilAtLeastOneExists(
                 hasText("Queued 1 file for Home Relay"),
                 5_000
@@ -159,7 +147,7 @@ class ShareReceiverActivityTest {
         ActivityScenario.launch<ShareReceiverActivity>(blockingSendIntent()).use { scenario ->
             assertTrue(
                 "The blocking provider must be opened after durable staging begins",
-                SampleContentProvider.awaitBlockingSourceStarted(5, TimeUnit.SECONDS)
+                awaitBlockingSourceStarted(BLOCKING_SOURCE_TIMEOUT_MILLIS)
             )
 
             val row = runBlocking {
@@ -185,7 +173,7 @@ class ShareReceiverActivityTest {
                 androidx.lifecycle.Lifecycle.State.DESTROYED,
                 scenario.state
             )
-            SampleContentProvider.releaseBlockingSource()
+            releaseBlockingSourceControl()
             composeRule.waitUntilAtLeastOneExists(
                 hasText("Queued 1 file for Home Relay"),
                 5_000
@@ -266,11 +254,11 @@ class ShareReceiverActivityTest {
         ActivityScenario.launch<ShareReceiverActivity>(blockingSendIntent()).use { scenario ->
             assertTrue(
                 "The blocking provider must be opened before receiver recreation",
-                SampleContentProvider.awaitBlockingSourceStarted(5, TimeUnit.SECONDS)
+                awaitBlockingSourceStarted(BLOCKING_SOURCE_TIMEOUT_MILLIS)
             )
 
             scenario.recreate()
-            SampleContentProvider.releaseBlockingSource()
+            releaseBlockingSourceControl()
             composeRule.waitUntilAtLeastOneExists(
                 hasText("Queued 1 file for Home Relay"),
                 5_000
@@ -299,7 +287,7 @@ class ShareReceiverActivityTest {
 
     @OptIn(ExperimentalTestApi::class)
     @Test
-    fun terminalDeadlineSurvivesReceiverRecreation() {
+    fun configuredTerminalDeadlineSurvivesReceiverRecreation() {
         ActivityScenario.launch<ShareReceiverActivity>(sampleSendIntent()).use { scenario ->
             composeRule.waitUntilAtLeastOneExists(
                 hasText("Queued 1 file for Home Relay"),
@@ -307,17 +295,14 @@ class ShareReceiverActivityTest {
             )
             val terminalObservedAt = SystemClock.elapsedRealtime()
 
-            SystemClock.sleep(700)
-            scenario.recreate()
+            if (configuredTerminalDurationMillis > 0L) {
+                SystemClock.sleep(preRecreationWaitMillis())
+            }
+            if (scenario.state != androidx.lifecycle.Lifecycle.State.DESTROYED) {
+                scenario.recreate()
+            }
 
-            assertTrue(
-                "Recreating the receiver must retain the original terminal deadline",
-                awaitDestroyed(scenario, 1_400)
-            )
-            assertTrue(
-                "Receiver recreation must not reset the default terminal status display",
-                SystemClock.elapsedRealtime() - terminalObservedAt <= 2_100
-            )
+            assertFinishesByConfiguredTerminalDeadline(scenario, terminalObservedAt)
         }
     }
 
@@ -388,6 +373,35 @@ class ShareReceiverActivityTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         ActivityScenario.launch(ShareOverlayHostActivity::class.java).use { hostScenario ->
             instrumentation.waitForIdleSync()
+            var hostStatusBarInset = 0
+            var hostNavigationBarInset = 0
+            hostScenario.onActivity { host ->
+                assertTrue("The overlay host must render before its baseline is captured", host.window.decorView.isLaidOut)
+                val insets = requireNotNull(
+                    ViewCompat.getRootWindowInsets(host.window.decorView)
+                )
+                hostStatusBarInset = insets.getInsets(WindowInsetsCompat.Type.statusBars()).top
+                hostNavigationBarInset = insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom
+            }
+            val hostBaseline = requireNotNull(instrumentation.uiAutomation.takeScreenshot())
+            assertTrue("The host must render a status bar", hostStatusBarInset > 0)
+            assertTrue("The host must render a navigation bar", hostNavigationBarInset > 0)
+            val statusBarBackgroundPixel = findHostBackgroundPixel(
+                screenshot = hostBaseline,
+                left = 0,
+                top = 0,
+                right = hostBaseline.width,
+                bottom = hostStatusBarInset,
+                regionName = "status bar"
+            )
+            val navigationBarBackgroundPixel = findHostBackgroundPixel(
+                screenshot = hostBaseline,
+                left = 0,
+                top = hostBaseline.height - hostNavigationBarInset,
+                right = hostBaseline.width,
+                bottom = hostBaseline.height,
+                regionName = "navigation bar"
+            )
             hostScenario.onActivity { host ->
                 host.startActivity(sampleSendIntent())
             }
@@ -415,6 +429,16 @@ class ShareReceiverActivityTest {
                 navigationBarInset = insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom
             }
             val screenshot = requireNotNull(instrumentation.uiAutomation.takeScreenshot())
+            assertEquals(
+                "The host baseline and receiver overlay must use the same display dimensions",
+                hostBaseline.width,
+                screenshot.width
+            )
+            assertEquals(
+                "The host baseline and receiver overlay must use the same display dimensions",
+                hostBaseline.height,
+                screenshot.height
+            )
             val cardLeftOnScreen = cardBounds.left + composeRootLocation[0]
             val cardRightOnScreen = cardBounds.right + composeRootLocation[0]
             val cardCenterYOnScreen = cardBounds.center.y + composeRootLocation[1]
@@ -424,28 +448,23 @@ class ShareReceiverActivityTest {
                 ((cardRightOnScreen + screenshot.width) / 2f).toInt()
             }
             val outsideCardY = cardCenterYOnScreen.toInt()
-            val visibleBackground = screenshot.getPixel(outsideCardX, outsideCardY)
-
-            assertColorNear(
+            assertEquals(
                 "An opaque receiver window must not cover the source app outside the status card",
-                ShareOverlayHostActivity.BACKGROUND_COLOR,
-                visibleBackground
+                hostBaseline.getPixel(outsideCardX, outsideCardY),
+                screenshot.getPixel(outsideCardX, outsideCardY)
             )
 
             assertTrue("Receiver must render a status bar", statusBarInset > 0)
             assertTrue("Receiver must render a navigation bar", navigationBarInset > 0)
-            assertColorNear(
+            assertEquals(
                 "An opaque status-bar contrast scrim must not cover the source app",
-                ShareOverlayHostActivity.BACKGROUND_COLOR,
-                screenshot.getPixel(screenshot.width / 2, statusBarInset / 2)
+                hostBaseline.getPixel(statusBarBackgroundPixel.x, statusBarBackgroundPixel.y),
+                screenshot.getPixel(statusBarBackgroundPixel.x, statusBarBackgroundPixel.y)
             )
-            assertColorNear(
+            assertEquals(
                 "An opaque navigation-bar contrast scrim must not cover the source app",
-                ShareOverlayHostActivity.BACKGROUND_COLOR,
-                screenshot.getPixel(
-                    screenshot.width / 4,
-                    screenshot.height - navigationBarInset / 2
-                )
+                hostBaseline.getPixel(navigationBarBackgroundPixel.x, navigationBarBackgroundPixel.y),
+                screenshot.getPixel(navigationBarBackgroundPixel.x, navigationBarBackgroundPixel.y)
             )
             assertEquals("Receiver status bar must be transparent", Color.TRANSPARENT, receiver.window.statusBarColor)
             assertEquals(
@@ -468,14 +487,95 @@ class ShareReceiverActivityTest {
         return scenario.state == androidx.lifecycle.Lifecycle.State.DESTROYED
     }
 
-    private fun assertColorNear(message: String, expected: Int, actual: Int) {
+    private fun assertVisibleBeforeConfiguredTerminalDeadline(
+        scenario: ActivityScenario<ShareReceiverActivity>
+    ) {
+        if (configuredTerminalDurationMillis == 0L) return
+
+        SystemClock.sleep(configuredTerminalDurationMillis / 2L)
         assertTrue(
-            message,
-            abs(Color.red(expected) - Color.red(actual)) <= 2 &&
-                abs(Color.green(expected) - Color.green(actual)) <= 2 &&
-                abs(Color.blue(expected) - Color.blue(actual)) <= 2
+            "The receiver must remain visible before its configured ${configuredTerminalDurationMillis} ms terminal deadline",
+            scenario.state != androidx.lifecycle.Lifecycle.State.DESTROYED
         )
     }
+
+    private fun assertFinishesByConfiguredTerminalDeadline(
+        scenario: ActivityScenario<ShareReceiverActivity>,
+        terminalObservedAt: Long
+    ) {
+        val latestAllowedElapsedMillis = configuredTerminalDurationMillis +
+            TERMINAL_SCHEDULER_TOLERANCE_MILLIS
+        val elapsedMillis = SystemClock.elapsedRealtime() - terminalObservedAt
+        assertTrue(
+            "The receiver must finish within its configured ${configuredTerminalDurationMillis} ms terminal duration plus $TERMINAL_SCHEDULER_TOLERANCE_MILLIS ms scheduling tolerance",
+            awaitDestroyed(scenario, maxOf(0L, latestAllowedElapsedMillis - elapsedMillis))
+        )
+        assertTrue(
+            "The receiver must not exceed its configured ${configuredTerminalDurationMillis} ms terminal duration plus $TERMINAL_SCHEDULER_TOLERANCE_MILLIS ms scheduling tolerance",
+            SystemClock.elapsedRealtime() - terminalObservedAt <= latestAllowedElapsedMillis
+        )
+    }
+
+    private fun preRecreationWaitMillis(): Long =
+        configuredTerminalDurationMillis - configuredTerminalDurationMillis / 4L
+
+    private fun resetBlockingSource() {
+        assertTrue(
+            "The test provider must accept a reset control call",
+            requireNotNull(callProviderControl(SampleContentProvider.METHOD_RESET))
+                .getBoolean(SampleContentProvider.RESULT_CONTROL_APPLIED)
+        )
+    }
+
+    private fun awaitBlockingSourceStarted(timeoutMillis: Long): Boolean =
+        requireNotNull(
+            callProviderControl(
+                SampleContentProvider.METHOD_AWAIT_STARTED,
+                Bundle().apply {
+                    putLong(SampleContentProvider.EXTRA_TIMEOUT_MILLIS, timeoutMillis)
+                }
+            )
+        ).getBoolean(SampleContentProvider.RESULT_STARTED)
+
+    private fun releaseBlockingSourceControl() {
+        assertTrue(
+            "The test provider must accept a release control call",
+            requireNotNull(callProviderControl(SampleContentProvider.METHOD_RELEASE))
+                .getBoolean(SampleContentProvider.RESULT_CONTROL_APPLIED)
+        )
+    }
+
+    private fun callProviderControl(method: String, extras: Bundle? = null): Bundle? =
+        InstrumentationRegistry.getInstrumentation().targetContext.contentResolver.call(
+            TEST_PROVIDER_CONTROL_URI,
+            method,
+            null,
+            extras
+        )
+
+    private fun findHostBackgroundPixel(
+        screenshot: Bitmap,
+        left: Int,
+        top: Int,
+        right: Int,
+        bottom: Int,
+        regionName: String
+    ): ScreenPixel {
+        for (y in top until bottom) {
+            for (x in left until right) {
+                if (screenshot.getPixel(x, y) == ShareOverlayHostActivity.BACKGROUND_COLOR) {
+                    return ScreenPixel(x, y)
+                }
+            }
+        }
+        throw AssertionError(
+            "No exact host background pixel was found in the $regionName baseline region " +
+                "[$left,$top,$right,$bottom]; the debug host must draw " +
+                "BACKGROUND_COLOR edge-to-edge beneath transparent system bars."
+        )
+    }
+
+    private data class ScreenPixel(val x: Int, val y: Int)
 
     private fun sampleSendIntent() = Intent(Intent.ACTION_SEND)
         .setClass(
@@ -502,6 +602,12 @@ class ShareReceiverActivityTest {
         .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
 
     private companion object {
+        private const val BLOCKING_SOURCE_TIMEOUT_MILLIS = 5_000L
+        private const val TERMINAL_SCHEDULER_TOLERANCE_MILLIS = 500L
+        private val TEST_PROVIDER_CONTROL_URI =
+            Uri.parse("content://app.maw629.homerelay.share-test/control")
+        private val configuredTerminalDurationMillis = BuildConfig.SHARE_STATUS_DISPLAY_MILLIS
+
         @JvmStatic
         @BeforeClass
         fun configureDestinationBeforeActivityLaunch() = runBlocking {

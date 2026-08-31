@@ -5,6 +5,7 @@ import android.content.ContentValues;
 import android.database.Cursor;
 import android.database.MatrixCursor;
 import android.net.Uri;
+import android.os.Bundle;
 import android.os.ParcelFileDescriptor;
 import android.provider.OpenableColumns;
 
@@ -18,6 +19,12 @@ import java.util.concurrent.TimeUnit;
 
 public class SampleContentProvider extends ContentProvider {
     public static final String REPORT_NAME = "report.pdf";
+    public static final String METHOD_RESET = "reset";
+    public static final String METHOD_AWAIT_STARTED = "await_started";
+    public static final String METHOD_RELEASE = "release";
+    public static final String EXTRA_TIMEOUT_MILLIS = "timeout_millis";
+    public static final String RESULT_STARTED = "started";
+    public static final String RESULT_CONTROL_APPLIED = "control_applied";
     private static final byte[] REPORT_BYTES = {'h', 'e', 'l', 'l', 'o'};
     private static final Set<String> READABLE_PATHS = new HashSet<>(Arrays.asList(
             "report.pdf",
@@ -52,6 +59,33 @@ public class SampleContentProvider extends ContentProvider {
     @Override
     public String getType(Uri uri) {
         return "application/pdf";
+    }
+
+    @Override
+    public Bundle call(String method, String arg, Bundle extras) {
+        if (METHOD_RESET.equals(method)) {
+            blockingControl = new BlockingControl();
+            return controlAppliedResult();
+        }
+        if (METHOD_AWAIT_STARTED.equals(method)) {
+            BlockingControl control = blockingControl;
+            long timeoutMillis = extras == null ? 0L : extras.getLong(EXTRA_TIMEOUT_MILLIS);
+            boolean started;
+            try {
+                started = control.started.await(Math.max(0L, timeoutMillis), TimeUnit.MILLISECONDS);
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                started = false;
+            }
+            Bundle result = new Bundle();
+            result.putBoolean(RESULT_STARTED, started);
+            return result;
+        }
+        if (METHOD_RELEASE.equals(method)) {
+            blockingControl.release.countDown();
+            return controlAppliedResult();
+        }
+        return super.call(method, arg, extras);
     }
 
     @Override
@@ -128,17 +162,10 @@ public class SampleContentProvider extends ContentProvider {
         return 0;
     }
 
-    public static void resetBlockingSource() {
-        blockingControl = new BlockingControl();
-    }
-
-    public static boolean awaitBlockingSourceStarted(long timeout, TimeUnit unit)
-            throws InterruptedException {
-        return blockingControl.started.await(timeout, unit);
-    }
-
-    public static void releaseBlockingSource() {
-        blockingControl.release.countDown();
+    private static Bundle controlAppliedResult() {
+        Bundle result = new Bundle();
+        result.putBoolean(RESULT_CONTROL_APPLIED, true);
+        return result;
     }
 
     private static final class BlockingControl {
