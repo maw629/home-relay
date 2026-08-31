@@ -85,9 +85,11 @@ ID. On its initial creation, the ViewModel starts the coordinator once for the
 parsed intent. On configuration recreation, it attaches to the existing
 operation rather than parsing and staging again. If process death leaves a
 saved intake ID with no live operation, the coordinator first completes
-startup recovery and the ViewModel treats the restored launch as a new share.
-Because the coordinator is application-owned, a receiver recreation does not
-cancel or duplicate an active intake.
+startup recovery and the ViewModel displays a terminal interrupted result; it
+does not reuse the restored intent because its temporary URI grant cannot be
+trusted. The sender must start a new Android share action. Because the
+coordinator is application-owned, a receiver recreation does not cancel or
+duplicate an active intake.
 
 While the operation is preparing, the receiver intercepts Back and predictive
 Back. It cannot finish until all accepted URIs have a durable terminal outcome.
