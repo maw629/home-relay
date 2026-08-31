@@ -61,11 +61,10 @@ class ShareReceiverActivity : ComponentActivity() {
             val terminalStatus = intakeStatus as? ShareIntakeStatus.Terminal
             if (terminalStatus != null) {
                 LaunchedEffect(terminalStatus.terminalAtMillis) {
-                    val remainingMillis = maxOf(
-                        0L,
-                        terminalStatus.terminalAtMillis +
-                            BuildConfig.SHARE_STATUS_DISPLAY_MILLIS -
-                            System.currentTimeMillis()
+                    val remainingMillis = terminalDisplayRemainingMillis(
+                        terminalAtMillis = terminalStatus.terminalAtMillis,
+                        displayDurationMillis = BuildConfig.SHARE_STATUS_DISPLAY_MILLIS,
+                        nowMillis = System.currentTimeMillis()
                     )
                     delay(remainingMillis)
                     finish()
@@ -82,6 +81,20 @@ class ShareReceiverActivity : ComponentActivity() {
             if (viewModel.hasSavedIntake) emptyList() else ShareIntentParser.parse(intent)
         )
     }
+}
+
+internal fun terminalDisplayRemainingMillis(
+    terminalAtMillis: Long,
+    displayDurationMillis: Long,
+    nowMillis: Long
+): Long {
+    require(displayDurationMillis >= 0L)
+    if (nowMillis <= terminalAtMillis) return displayDurationMillis
+
+    val elapsedMillis = nowMillis - terminalAtMillis
+    if (elapsedMillis < 0L) return 0L
+
+    return maxOf(0L, displayDurationMillis - elapsedMillis)
 }
 
 sealed interface ShareQueueStatus {

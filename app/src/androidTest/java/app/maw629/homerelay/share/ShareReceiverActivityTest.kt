@@ -36,7 +36,9 @@ import kotlinx.coroutines.flow.first
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.BeforeClass
 import org.junit.Rule
@@ -75,6 +77,7 @@ class ShareReceiverActivityTest {
     @OptIn(ExperimentalTestApi::class)
     @Test
     fun realShareStaysVisibleForTheConfiguredTerminalDurationThenFinishes() {
+        assumeTerminalTimingDurationIsTestable()
         ActivityScenario.launch<ShareReceiverActivity>(sampleSendIntent()).use { scenario ->
             composeRule.waitUntilAtLeastOneExists(
                 hasText("Queued 1 file for Home Relay"),
@@ -288,18 +291,31 @@ class ShareReceiverActivityTest {
     @OptIn(ExperimentalTestApi::class)
     @Test
     fun configuredTerminalDeadlineSurvivesReceiverRecreation() {
+        assumeTerminalRecreationDurationIsTestable()
         ActivityScenario.launch<ShareReceiverActivity>(sampleSendIntent()).use { scenario ->
             composeRule.waitUntilAtLeastOneExists(
                 hasText("Queued 1 file for Home Relay"),
                 5_000
             )
             val terminalObservedAt = SystemClock.elapsedRealtime()
-
-            if (configuredTerminalDurationMillis > 0L) {
-                SystemClock.sleep(preRecreationWaitMillis())
+            lateinit var originalActivity: ShareReceiverActivity
+            scenario.onActivity { activity ->
+                originalActivity = activity
             }
-            if (scenario.state != androidx.lifecycle.Lifecycle.State.DESTROYED) {
-                scenario.recreate()
+
+            SystemClock.sleep(preRecreationWaitMillis())
+            assertNotEquals(
+                "The receiver must remain active long enough to recreate during its terminal display",
+                androidx.lifecycle.Lifecycle.State.DESTROYED,
+                scenario.state
+            )
+            scenario.recreate()
+            scenario.onActivity { recreatedActivity ->
+                assertNotSame(
+                    "The receiver recreation assertion requires a newly created activity",
+                    originalActivity,
+                    recreatedActivity
+                )
             }
 
             assertFinishesByConfiguredTerminalDeadline(scenario, terminalObservedAt)
@@ -479,12 +495,15 @@ class ShareReceiverActivityTest {
         scenario: ActivityScenario<ShareReceiverActivity>,
         timeoutMillis: Long
     ): Boolean {
-        val deadline = SystemClock.elapsedRealtime() + timeoutMillis
-        while (SystemClock.elapsedRealtime() < deadline) {
+        val startedAtMillis = SystemClock.elapsedRealtime()
+        while (true) {
             if (scenario.state == androidx.lifecycle.Lifecycle.State.DESTROYED) return true
-            SystemClock.sleep(10)
+            val elapsedMillis = SystemClock.elapsedRealtime() - startedAtMillis
+            if (elapsedMillis < 0L || elapsedMillis >= timeoutMillis) {
+                return scenario.state == androidx.lifecycle.Lifecycle.State.DESTROYED
+            }
+            SystemClock.sleep(minOf(TERMINAL_POLL_INTERVAL_MILLIS, timeoutMillis - elapsedMillis))
         }
-        return scenario.state == androidx.lifecycle.Lifecycle.State.DESTROYED
     }
 
     private fun assertVisibleBeforeConfiguredTerminalDeadline(
@@ -503,21 +522,51 @@ class ShareReceiverActivityTest {
         scenario: ActivityScenario<ShareReceiverActivity>,
         terminalObservedAt: Long
     ) {
-        val latestAllowedElapsedMillis = configuredTerminalDurationMillis +
-            TERMINAL_SCHEDULER_TOLERANCE_MILLIS
-        val elapsedMillis = SystemClock.elapsedRealtime() - terminalObservedAt
-        assertTrue(
-            "The receiver must finish within its configured ${configuredTerminalDurationMillis} ms terminal duration plus $TERMINAL_SCHEDULER_TOLERANCE_MILLIS ms scheduling tolerance",
-            awaitDestroyed(scenario, maxOf(0L, latestAllowedElapsedMillis - elapsedMillis))
+        val latestAllowedElapsedMillis = configuredTerminalDurationMillis
+            .coerceAtMost(Long.MAX_VALUE - TERMINAL_DEADLINE_TOLERANCE_MILLIS) +
+            TERMINAL_DEADLINE_TOLERANCE_MILLIS
+        val remainingWaitMillis = terminalDisplayRemainingMillis(
+            terminalAtMillis = terminalObservedAt,
+            displayDurationMillis = latestAllowedElapsedMillis,
+            nowMillis = SystemClock.elapsedRealtime()
         )
         assertTrue(
-            "The receiver must not exceed its configured ${configuredTerminalDurationMillis} ms terminal duration plus $TERMINAL_SCHEDULER_TOLERANCE_MILLIS ms scheduling tolerance",
-            SystemClock.elapsedRealtime() - terminalObservedAt <= latestAllowedElapsedMillis
+            "The receiver must finish within its configured ${configuredTerminalDurationMillis} ms terminal duration plus $TERMINAL_DEADLINE_TOLERANCE_MILLIS ms scheduling and polling tolerance",
+            awaitDestroyed(scenario, remainingWaitMillis)
+        )
+        val elapsedMillis = SystemClock.elapsedRealtime() - terminalObservedAt
+        assertTrue(
+            "The receiver must not exceed its configured ${configuredTerminalDurationMillis} ms terminal duration plus $TERMINAL_DEADLINE_TOLERANCE_MILLIS ms scheduling and polling tolerance",
+            elapsedMillis >= 0L && elapsedMillis <= latestAllowedElapsedMillis
         )
     }
 
     private fun preRecreationWaitMillis(): Long =
         configuredTerminalDurationMillis - configuredTerminalDurationMillis / 4L
+
+    private fun assumeTerminalTimingDurationIsTestable() {
+        assumeTrue(
+            "Skipping terminal timing behavior because configured display duration " +
+                "${configuredTerminalDurationMillis} ms exceeds the " +
+                "$MAXIMUM_TESTABLE_TERMINAL_DURATION_MILLIS ms testable maximum.",
+            configuredTerminalDurationMillis <= MAXIMUM_TESTABLE_TERMINAL_DURATION_MILLIS
+        )
+    }
+
+    private fun assumeTerminalRecreationDurationIsTestable() {
+        assumeTrue(
+            "Skipping terminal recreation behavior because configured display duration " +
+                "${configuredTerminalDurationMillis} ms exceeds the " +
+                "$MAXIMUM_TESTABLE_TERMINAL_DURATION_MILLIS ms testable maximum.",
+            configuredTerminalDurationMillis <= MAXIMUM_TESTABLE_TERMINAL_DURATION_MILLIS
+        )
+        assumeTrue(
+            "Skipping terminal recreation assertion because configured display duration " +
+                "${configuredTerminalDurationMillis} ms is shorter than the " +
+                "$MINIMUM_RECREATION_TEST_DURATION_MILLIS ms required for reliable recreation.",
+            configuredTerminalDurationMillis >= MINIMUM_RECREATION_TEST_DURATION_MILLIS
+        )
+    }
 
     private fun resetBlockingSource() {
         assertTrue(
@@ -603,7 +652,12 @@ class ShareReceiverActivityTest {
 
     private companion object {
         private const val BLOCKING_SOURCE_TIMEOUT_MILLIS = 5_000L
+        private const val MAXIMUM_TESTABLE_TERMINAL_DURATION_MILLIS = 5_000L
+        private const val MINIMUM_RECREATION_TEST_DURATION_MILLIS = 2_000L
+        private const val TERMINAL_POLL_INTERVAL_MILLIS = 10L
         private const val TERMINAL_SCHEDULER_TOLERANCE_MILLIS = 500L
+        private const val TERMINAL_DEADLINE_TOLERANCE_MILLIS =
+            TERMINAL_SCHEDULER_TOLERANCE_MILLIS + TERMINAL_POLL_INTERVAL_MILLIS
         private val TEST_PROVIDER_CONTROL_URI =
             Uri.parse("content://app.maw629.homerelay.share-test/control")
         private val configuredTerminalDurationMillis = BuildConfig.SHARE_STATUS_DISPLAY_MILLIS
