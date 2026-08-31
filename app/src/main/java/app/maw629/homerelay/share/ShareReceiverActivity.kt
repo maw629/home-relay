@@ -61,6 +61,10 @@ class ShareReceiverActivity : ComponentActivity() {
         }
         val viewModel = ViewModelProvider(this, factory)[ShareIntakeViewModel::class.java]
         terminalDisplayStartUptime = viewModel.terminalDisplayStartUptime()
+        ShareReceiverDiagnostics.event(
+            "created",
+            "savedDisplayStart=$terminalDisplayStartUptime"
+        )
 
         backCallback = object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -76,12 +80,17 @@ class ShareReceiverActivity : ComponentActivity() {
                 LaunchedEffect(terminalStatus.terminalAtMillis) {
                     val displayStartUptime = viewModel.recordTerminalDisplayStartUptime()
                     terminalDisplayStartUptime = displayStartUptime
+                    ShareReceiverDiagnostics.event(
+                        "timer_started",
+                        "displayStart=$displayStartUptime duration=${BuildConfig.SHARE_STATUS_DISPLAY_MILLIS}"
+                    )
                     waitForTerminalDisplay(
                         terminalAtElapsedMillis = displayStartUptime,
                         displayDurationMillis = BuildConfig.SHARE_STATUS_DISPLAY_MILLIS,
                         uptimeMillis = SystemClock::uptimeMillis,
                         delayMillis = ::delay
                     )
+                    ShareReceiverDiagnostics.event("finish_called")
                     finish()
                 }
             }
@@ -89,6 +98,12 @@ class ShareReceiverActivity : ComponentActivity() {
         lifecycleScope.launch {
             viewModel.status.collect { status ->
                 intakeStatus = status
+                if (status is ShareIntakeStatus.Terminal) {
+                    ShareReceiverDiagnostics.event(
+                        "terminal_received",
+                        "coordinatorTerminalAt=${status.terminalAtMillis}"
+                    )
+                }
                 updateBackInterception(status is ShareIntakeStatus.Preparing)
             }
         }
@@ -98,10 +113,21 @@ class ShareReceiverActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        ShareReceiverDiagnostics.event("destroyed", "isFinishing=$isFinishing")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             platformBackCallback?.let(onBackInvokedDispatcher::unregisterOnBackInvokedCallback)
         }
         super.onDestroy()
+    }
+
+    override fun onPause() {
+        ShareReceiverDiagnostics.event("paused", "isFinishing=$isFinishing")
+        super.onPause()
+    }
+
+    override fun onStop() {
+        ShareReceiverDiagnostics.event("stopped", "isFinishing=$isFinishing")
+        super.onStop()
     }
 
     private fun updateBackInterception(isPreparing: Boolean) {
@@ -157,6 +183,7 @@ internal suspend fun waitForTerminalDisplay(
             nowElapsedMillis = uptimeMillis()
         )
         if (remainingMillis == 0L) return
+        ShareReceiverDiagnostics.event("timer_delay", "remaining=$remainingMillis")
         delayMillis(terminalDisplayDelayChunkMillis(remainingMillis))
     }
 }

@@ -84,6 +84,7 @@ class ShareReceiverActivityTest {
                 5_000
             )
             val terminalDisplayStartUptime = awaitTerminalDisplayStartUptime(scenario)
+            recordTestTiming("terminal_display_start=$terminalDisplayStartUptime")
 
             assertVisibleBeforeConfiguredTerminalDeadline(scenario)
             assertFinishesByConfiguredTerminalDeadline(scenario, terminalDisplayStartUptime)
@@ -304,18 +305,21 @@ class ShareReceiverActivityTest {
                 5_000
             )
             val terminalDisplayStartUptime = awaitTerminalDisplayStartUptime(scenario)
+            recordTestTiming("terminal_display_start=$terminalDisplayStartUptime")
             lateinit var originalActivity: ShareReceiverActivity
             scenario.onActivity { activity ->
                 originalActivity = activity
             }
 
             SystemClock.sleep(preRecreationWaitMillis())
+            recordTestTiming("recreate_requested")
             assertNotEquals(
                 "The receiver must remain active long enough to recreate during its terminal display",
                 androidx.lifecycle.Lifecycle.State.DESTROYED,
                 scenario.state
             )
             scenario.recreate()
+            recordTestTiming("recreate_finished")
             scenario.onActivity { recreatedActivity ->
                 assertNotSame(
                     "The receiver recreation assertion requires a newly created activity",
@@ -533,6 +537,7 @@ class ShareReceiverActivityTest {
             displayDurationMillis = latestAllowedElapsedMillis,
             nowElapsedMillis = SystemClock.uptimeMillis()
         )
+        recordTestTiming("finish_wait=$remainingWaitMillis")
         assertTrue(
             "The receiver must begin finishing within its configured ${configuredTerminalDurationMillis} ms terminal duration plus $TERMINAL_DEADLINE_TOLERANCE_MILLIS ms scheduling and polling tolerance",
             awaitFinishingOrDestroyed(scenario, remainingWaitMillis)
@@ -557,6 +562,13 @@ class ShareReceiverActivityTest {
             SystemClock.sleep(TERMINAL_POLL_INTERVAL_MILLIS)
         }
         throw AssertionError("The terminal status card never recorded its display start")
+    }
+
+    private fun recordTestTiming(event: String) {
+        android.util.Log.d(
+            "HomeRelayShareReceiverTest",
+            "uptime=${SystemClock.uptimeMillis()} event=$event"
+        )
     }
 
     private fun waitForBackInterception(scenario: ActivityScenario<ShareReceiverActivity>) {
