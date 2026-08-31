@@ -14,14 +14,18 @@ technical contract. Contributors and coding agents must read
 
 1. Select a dedicated destination such as `Google Drive > Home Relay Inbox`.
 2. Share one or more files to `Home Relay`.
-3. Home Relay immediately copies each accepted `content://` URI into private,
-   no-backup storage, persists a queue item, and schedules provider writing.
-4. Home Relay reports that the selected document provider accepted the write.
-5. Google Drive and Drive for desktop synchronize separately and eventually.
+3. Home Relay privately stages each accepted `content://` URI in no-backup
+   storage, then durably queues it for provider writing or records a durable
+   attention outcome.
+4. A transparent receiver shows a centered status overlay with the aggregate
+   share result, then returns to the source app after its configured display
+   duration.
+5. Queued files are written to the selected document provider. Google Drive and
+   Drive for desktop synchronize separately and eventually.
 
-Completed means the selected Android document provider accepted the write. It
-does not independently prove that Drive cloud replication or Windows sync has
-finished.
+Completed means the selected Android document provider accepted the write. The
+share-status overlay and a completed provider write do not independently prove
+that Drive cloud replication or Windows sync has finished.
 
 ## Requirements
 
@@ -47,6 +51,16 @@ connected-device tests, installation, and manual UAT.
 ```bash
 ./gradlew testDebugUnitTest lintDebug assembleDebug
 ```
+
+The share-status overlay remains visible for 2,000 ms after its terminal
+result by default. To build a debug APK with a three-second display duration:
+
+```bash
+SHARE_STATUS_DISPLAY_MILLIS=3000 ./gradlew assembleDebug
+```
+
+If `SHARE_STATUS_DISPLAY_MILLIS` is unset, invalid, negative, or overflows a
+`Long`, Home Relay uses the 2,000 ms default.
 
 ### Windows checks
 
@@ -74,6 +88,12 @@ instrumentation tests, or diagnostics.
 - [ ] Select `Google Drive > Home Relay Inbox`; force-stop Home Relay, reopen it, and confirm the destination remains selected.
 - [ ] Reboot the phone and confirm the destination remains selected.
 - [ ] Share a PDF, image, DOCX, ZIP, and multiple files from Zalo to Home Relay.
+- [ ] Share a real `content://` file and confirm it is privately staged before the receiver finishes, then is queued or shown as needing attention.
+- [ ] Recreate the receiver while it is preparing and confirm it observes the existing intake without creating a second row; recreate it after a terminal result and confirm the original display deadline remains in effect.
+- [ ] While a share is preparing, use Back and predictive Back and confirm neither abandons intake; after a terminal result, confirm Back returns to the source app.
+- [ ] Share a Zalo file and confirm only the centered overlay is visible over Zalo, including transparent system bars, then that it automatically returns to Zalo after two seconds.
+- [ ] Repeat the Zalo overlay and return checks with gesture and three-button navigation on API 26-34 and Android 15+.
+- [ ] Interrupt staging, reopen Home Relay, and confirm Recent Uploads shows the interrupted share with no Retry action and instructs the sender to share it again.
 - [ ] Share a file in airplane mode, reconnect, and observe automatic retry.
 - [ ] Share two same-named files and confirm unique Drive names.
 - [ ] Share a file at least 10 MiB and observe a foreground progress notification.

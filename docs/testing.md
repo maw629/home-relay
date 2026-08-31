@@ -45,6 +45,18 @@ not filter Android instrumentation tests.
 - Add a local unit test for deterministic logic and error mapping.
 - Add instrumentation coverage for Android activity, Compose, Room, provider,
   permission, or WorkManager behavior that cannot be trusted on the JVM.
+- Cover a real `content://` share that creates its durable staging row and
+  private staged file before the receiver finishes.
+- Cover receiver recreation while preparation is active without duplicate
+  staging, recreation after a terminal result without resetting the terminal
+  deadline, and process-restored intake without reopening a stale URI.
+- Cover Back and predictive Back prevention while preparation is active,
+  automatic finish at the terminal deadline, and dismissal with Back after a
+  real terminal status.
+- Cover the transparent centered receiver card, transparent system bars, and
+  source-app visibility outside the overlay.
+- Cover interrupted-recovery UI in Recent Uploads: `SHARE_INTERRUPTED` tells
+  the sender to share again and has no Retry action.
 - Verify that a bug-regression test fails before the production fix and passes
   after it.
 - Run focused tests first, then the full suite before merging/releasing.
@@ -59,7 +71,12 @@ and size, result, and any evidence path:
 | Case | Expected result |
 | --- | --- |
 | Folder persistence | Selected tree remains after force-stop, relaunch, and reboot. |
-| File intake | PDF, image, DOCX, ZIP, and multiple-file share queue without a folder picker. |
+| File intake | PDF, image, DOCX, ZIP, and multiple-file share privately stage before the receiver finishes, then become queued or a durable attention record without a folder picker. |
+| Receiver lifecycle | Recreation during preparation observes the existing operation without a duplicate row; recreation after terminal status retains its original deadline. |
+| Receiver Back handling | Back and predictive Back cannot dismiss the receiver while preparation is active; after a terminal result, Back can return to the source app. |
+| Zalo share overlay | A Zalo share shows only Home Relay's centered transparent status card over Zalo, with the source app visible outside the card and through transparent system bars, then returns to Zalo after two seconds. |
+| Zalo navigation/API coverage | Repeat the Zalo overlay and return case with gesture and three-button navigation on API 26-34 and Android 15+. |
+| Interrupted staging | After staging interruption and app restart, Recent Uploads shows a nonretryable `SHARE_INTERRUPTED` record that tells the sender to share again. |
 | Offline behavior | Queued item retries after connectivity returns. |
 | Duplicate names | Same original filename produces distinct destination names. |
 | Large file | At least 10 MiB produces foreground provider-write progress when observable. |
@@ -71,6 +88,11 @@ and size, result, and any evidence path:
 Zalo may not expose multiple-file sharing on a given version. In that case,
 record it as unavailable and validate `ACTION_SEND_MULTIPLE` with Files by
 Google or another file manager.
+
+For Zalo overlay cases, record the navigation mode as well as date, device
+model, Android API level, app commit/version, source file type and size, result,
+and evidence path. Do not claim device or manual behavior is verified unless
+the device command and the corresponding case were run.
 
 The Home Relay foreground progress notification measures the copy to the
 document provider. Drive's subsequent cloud-sync progress is outside the app's
