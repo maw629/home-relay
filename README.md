@@ -1,35 +1,73 @@
 # Home Relay
 
-Home Relay receives files from Android's share sheet, stages them privately, and
-writes them to a folder selected through the Storage Access Framework, including
-Google Drive folders exposed by the Drive app. It does not use OAuth, the Google
-Drive API, a cloud backend, or broad storage permissions.
+Home Relay is a sideloaded Android app that receives files from Android's Share
+sheet and writes them to one user-selected document-tree folder. Google Drive
+is supported through Android's Storage Access Framework (SAF); the app does not
+use OAuth, the Google Drive API, a cloud backend, Firebase, or broad storage
+permissions.
 
-## Local setup
+Start with [docs/architecture.md](docs/architecture.md) for the maintained
+technical contract. Contributors and coding agents must read
+[AGENTS.md](AGENTS.md) before changing the project.
 
-1. Open this directory in Android Studio and install the required Android SDK
-   platform and build tools when prompted.
-2. Connect an Android device or start an emulator, then build and install the
-   debug app:
+## User flow
 
-   ```bash
-   ./gradlew assembleDebug
-   adb install -r app/build/outputs/apk/debug/app-debug.apk
-   ```
+1. Select a dedicated destination such as `Google Drive > Home Relay Inbox`.
+2. Share one or more files to `Home Relay`.
+3. Home Relay immediately copies each accepted `content://` URI into private,
+   no-backup storage, persists a queue item, and schedules provider writing.
+4. Home Relay reports that the selected document provider accepted the write.
+5. Google Drive and Drive for desktop synchronize separately and eventually.
 
-3. In Home Relay, select the target folder with the system folder picker. For
-   Google Drive, install Drive, sign in to a dedicated non-production account,
-   and select the intended Drive folder.
+Completed means the selected Android document provider accepted the write. It
+does not independently prove that Drive cloud replication or Windows sync has
+finished.
 
-## Automated verification
+## Requirements
 
-Run the complete automated suite before device testing:
+- Android Studio with its bundled JBR/JDK and Android SDK API 37 installed.
+- Android SDK Build-Tools and Platform-Tools (`adb`).
+- WSL 2 with a Linux Android SDK for local Gradle builds, if using the hybrid
+  workflow below.
+- A physical phone or emulator for instrumentation tests.
+- Google Drive and Zalo installed on the physical phone for full UAT.
+- Google Drive for desktop on Windows to validate eventual Windows sync.
+
+The app package is `app.maw629.homerelay`, `minSdk` is 26, and `compileSdk` and
+`targetSdk` are 37.
+
+## Development workflow
+
+Keep the repository in the WSL filesystem when possible. Use WSL for unit
+tests, lint, and APK builds. Use Windows Android Studio and Windows `adb` for
+connected-device tests, installation, and manual UAT.
+
+### WSL checks
 
 ```bash
-./gradlew testDebugUnitTest connectedDebugAndroidTest lintDebug
+./gradlew testDebugUnitTest lintDebug assembleDebug
 ```
 
-`connectedDebugAndroidTest` requires a connected Android device or emulator.
+### Windows checks
+
+Connect a phone or start an emulator, then run from PowerShell:
+
+```powershell
+.\gradlew.bat testDebugUnitTest connectedDebugAndroidTest lintDebug
+```
+
+See [docs/testing.md](docs/testing.md) for focused test commands, diagnostics,
+and acceptance-test recording.
+
+### Debug installation
+
+```powershell
+.\gradlew.bat assembleDebug
+adb install -r app\build\outputs\apk\debug\app-debug.apk
+```
+
+The phone can be disconnected after installation. Reconnect it only for `adb`,
+instrumentation tests, or diagnostics.
 
 ## Manual acceptance checklist
 
@@ -43,49 +81,48 @@ Run the complete automated suite before device testing:
 - [ ] Deny notifications and confirm Recent Uploads still exposes queued and failed items.
 - [ ] Confirm a completed item appears in Drive web and in Windows File Explorer via Drive for desktop.
 
-### Emulator validation
+Observed debug-build UAT evidence as of 2026-08-31:
 
-Create a current stable Google Play emulator in Android Studio. Sign in to a
-dedicated non-production Google account, install Google Drive, select a
-dedicated `Home-Relay-SAF-Test` folder, and run the checklist. Zalo-specific
-sharing can be skipped if Zalo is unavailable in the emulator.
-
-### Physical-device validation
-
-Install the debug APK with the command in Local setup. Use Zalo's actual
-`Share file to Other app` flow for every applicable checklist item. Capture
-`adb logcat` for any document-provider, WorkManager, or notification failure.
+- Destination persistence after force-stop/relaunch and reboot passed.
+- Zalo single-file sharing passed for PDF, image, DOCX, and ZIP.
+- Files by Google multiple-file sharing passed; Zalo did not offer a
+  multiple-file share flow.
+- Offline retry, duplicate-name handling, denied notifications, and Drive web
+  plus Drive for desktop synchronization passed.
+- A foreground progress notification was observed, but provider writes can
+  finish too quickly to make its progress consistently visible. Google Drive's
+  later cloud-sync progress is outside Home Relay's control.
+- Destination-loss recovery and signed-release acceptance remain to be recorded.
 
 ## Release signing
 
-Create a new keystore outside this repository with Android Studio's **Generate
-Signed Bundle / APK** flow. Do not commit the keystore or its passwords. Create
-`keystore.properties` at the repository root with paths and credentials for
-your local keystore:
+Create a keystore outside this repository with Android Studio's **Generate
+Signed Bundle / APK** flow. Do not commit the keystore or any passwords.
+Create an ignored `keystore.properties` at the repository root:
 
 ```properties
-storeFile=/absolute/path/outside/the/repository/home-relay-release.jks
+storeFile=C:/secure/path/home-relay-release.jks
 storePassword=your-keystore-password
 keyAlias=your-key-alias
 keyPassword=your-key-password
 ```
 
-`keystore.properties`, `*.jks`, and `*.keystore` are ignored by Git. The
-release signing configuration is enabled only when all four properties are
-present. Keep this file local and never add passwords to source files.
+The release signing configuration is enabled only when all four properties are
+present. Build and inspect the signed release with:
 
-Build the signed release APK after configuring the local properties file:
-
-```bash
-./gradlew assembleRelease
+```powershell
+.\gradlew.bat clean assembleRelease signingReport
 ```
 
-Install it using Android's package installer or:
+Install the resulting APK with:
 
-```bash
-adb install -r app/build/outputs/apk/release/app-release.apk
+```powershell
+adb install -r app\build\outputs\apk\release\app-release.apk
 ```
 
-Verify that Home Relay appears in Zalo's Android Share sheet, retains its
-selected destination after relaunch, and passes the full checklist on the
-physical phone.
+If the installed debug app uses a different certificate, Android requires its
+uninstallation before installing the release build. This removes local queue
+data and the selected destination; select the destination again afterward.
+
+An Android App Bundle (`.aab`) is for Play distribution and is not directly
+installable. Use `app-release.apk` for sideloading.
