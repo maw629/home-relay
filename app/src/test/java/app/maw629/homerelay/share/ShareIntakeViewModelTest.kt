@@ -97,6 +97,52 @@ class ShareIntakeViewModelTest {
     }
 
     @Test
+    fun terminalDisplayStartIsSavedAcrossViewModelRecreation() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val handle = SavedStateHandle()
+        val operations = FakeShareIntakeOperations()
+        val firstViewModel = ShareIntakeViewModel(handle, operations, nowUptimeMillis = { 100L })
+
+        firstViewModel.beginOrAttach(listOf(reportShare))
+        val intakeId = requireNotNull(handle.get<String>(ShareIntakeViewModel.INTAKE_ID_KEY))
+        operations.operations.getValue(intakeId).value = ShareIntakeStatus.Terminal(
+            queuedCount = 1,
+            attentionCount = 0,
+            queueUnavailableCount = 0,
+            attentionErrors = emptySet(),
+            terminalAtMillis = 99L
+        )
+        advanceUntilIdle()
+
+        assertEquals(100L, firstViewModel.recordTerminalDisplayStartUptime())
+
+        val recreatedViewModel = ShareIntakeViewModel(handle, operations, nowUptimeMillis = { 200L })
+        recreatedViewModel.beginOrAttach(emptyList())
+        advanceUntilIdle()
+
+        assertEquals(100L, recreatedViewModel.recordTerminalDisplayStartUptime())
+    }
+
+    @Test
+    fun processRestorationClearsPriorTerminalDisplayStart() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val handle = SavedStateHandle(
+            mapOf(
+                ShareIntakeViewModel.INTAKE_ID_KEY to "restored-intake",
+                ShareIntakeViewModel.TERMINAL_DISPLAY_START_UPTIME_KEY to 100L
+            )
+        )
+        val operations = FakeShareIntakeOperations()
+        val viewModel = ShareIntakeViewModel(handle, operations, nowUptimeMillis = { 200L })
+
+        viewModel.beginOrAttach(listOf(reportShare))
+        operations.recovery.complete(Result.success(Unit))
+        advanceUntilIdle()
+
+        assertEquals(200L, viewModel.recordTerminalDisplayStartUptime())
+    }
+
+    @Test
     fun clearingPreparingViewModelRequestsDeferredOperationRelease() = runTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val handle = SavedStateHandle()

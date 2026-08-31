@@ -32,6 +32,7 @@ class ShareIntakeViewModel(
 
         val savedIntakeId = savedStateHandle.get<String>(INTAKE_ID_KEY)
         if (savedIntakeId == null) {
+            savedStateHandle.remove<Long>(TERMINAL_DISPLAY_START_UPTIME_KEY)
             val newIntakeId = UUID.randomUUID().toString()
             savedStateHandle[INTAKE_ID_KEY] = newIntakeId
             intakeId = newIntakeId
@@ -41,6 +42,7 @@ class ShareIntakeViewModel(
 
         intakeId = savedIntakeId
         operations.observe(savedIntakeId)?.let(::observe) ?: viewModelScope.launch {
+            savedStateHandle.remove<Long>(TERMINAL_DISPLAY_START_UPTIME_KEY)
             operations.awaitRecovery()
             mutableStatus.value = ShareIntakeStatus.Terminal(
                 queuedCount = 0,
@@ -51,6 +53,12 @@ class ShareIntakeViewModel(
             )
         }
     }
+
+    fun terminalDisplayStartUptime(): Long? = savedStateHandle.get(TERMINAL_DISPLAY_START_UPTIME_KEY)
+
+    fun recordTerminalDisplayStartUptime(): Long =
+        savedStateHandle.get<Long>(TERMINAL_DISPLAY_START_UPTIME_KEY)
+            ?: nowUptimeMillis().also { savedStateHandle[TERMINAL_DISPLAY_START_UPTIME_KEY] = it }
 
     override fun onCleared() {
         intakeId?.let(operations::release)
@@ -65,5 +73,6 @@ class ShareIntakeViewModel(
 
     companion object {
         const val INTAKE_ID_KEY = "share_intake_id"
+        const val TERMINAL_DISPLAY_START_UPTIME_KEY = "terminal_display_start_uptime"
     }
 }

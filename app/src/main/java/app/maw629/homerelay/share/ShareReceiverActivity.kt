@@ -1,7 +1,10 @@
 package app.maw629.homerelay.share
 
+import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
+import android.window.OnBackInvokedCallback
+import android.window.OnBackInvokedDispatcher
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
@@ -38,7 +41,9 @@ import kotlinx.coroutines.launch
 
 class ShareReceiverActivity : ComponentActivity() {
     private var intakeStatus by mutableStateOf<ShareIntakeStatus>(ShareIntakeStatus.Preparing)
+    private var terminalDisplayStartUptime by mutableStateOf<Long?>(null)
     private lateinit var backCallback: OnBackPressedCallback
+    private var platformBackCallback: OnBackInvokedCallback? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -52,35 +57,67 @@ class ShareReceiverActivity : ComponentActivity() {
             ): T = ShareIntakeViewModel(handle, operations) as T
         }
         val viewModel = ViewModelProvider(this, factory)[ShareIntakeViewModel::class.java]
+        terminalDisplayStartUptime = viewModel.terminalDisplayStartUptime()
 
         backCallback = object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() = Unit
         }
         onBackPressedDispatcher.addCallback(this, backCallback)
+        updateBackInterception(true)
         setContent {
             ShareQueueOverlay(intakeStatus)
             val terminalStatus = intakeStatus as? ShareIntakeStatus.Terminal
             if (terminalStatus != null) {
                 LaunchedEffect(terminalStatus.terminalAtMillis) {
+                    terminalDisplayStartUptime = viewModel.recordTerminalDisplayStartUptime()
+                }
+                terminalDisplayStartUptime?.let { displayStartUptime ->
+                    LaunchedEffect(displayStartUptime) {
                     waitForTerminalDisplay(
-                        terminalAtElapsedMillis = terminalStatus.terminalAtMillis,
+                        terminalAtElapsedMillis = displayStartUptime,
                         displayDurationMillis = BuildConfig.SHARE_STATUS_DISPLAY_MILLIS,
                         uptimeMillis = SystemClock::uptimeMillis,
                         delayMillis = ::delay
                     )
                     finish()
+                    }
                 }
             }
         }
         lifecycleScope.launch {
             viewModel.status.collect { status ->
                 intakeStatus = status
-                backCallback.isEnabled = status is ShareIntakeStatus.Preparing
+                updateBackInterception(status is ShareIntakeStatus.Preparing)
             }
         }
         viewModel.beginOrAttach(
             if (viewModel.hasSavedIntake) emptyList() else ShareIntentParser.parse(intent)
         )
+    }
+
+    override fun onDestroy() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            platformBackCallback?.let(onBackInvokedDispatcher::unregisterOnBackInvokedCallback)
+        }
+        super.onDestroy()
+    }
+
+    private fun updateBackInterception(isPreparing: Boolean) {
+        backCallback.isEnabled = isPreparing
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+
+        if (isPreparing && platformBackCallback == null) {
+            val callback = OnBackInvokedCallback {}
+            platformBackCallback = callback
+            onBackInvokedDispatcher.registerOnBackInvokedCallback(
+                OnBackInvokedDispatcher.PRIORITY_DEFAULT,
+                callback
+            )
+        } else if (!isPreparing) {
+            val callback = platformBackCallback ?: return
+            onBackInvokedDispatcher.unregisterOnBackInvokedCallback(callback)
+            platformBackCallback = null
+        }
     }
 }
 

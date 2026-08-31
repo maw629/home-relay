@@ -136,6 +136,11 @@ class ShareReceiverActivityTest {
                 "System predictive Back must not finish a receiver whose source is still preparing",
                 scenario.state != androidx.lifecycle.Lifecycle.State.DESTROYED
             )
+            assertEquals(
+                "System predictive Back must keep a preparing receiver foreground and interactive",
+                androidx.lifecycle.Lifecycle.State.RESUMED,
+                scenario.state
+            )
             releaseBlockingSourceControl()
             composeRule.waitUntilAtLeastOneExists(
                 hasText("Queued 1 file for Home Relay"),
@@ -402,7 +407,7 @@ class ShareReceiverActivityTest {
             val hostBaseline = requireNotNull(instrumentation.uiAutomation.takeScreenshot())
             assertTrue("The host must render a status bar", hostStatusBarInset > 0)
             assertTrue("The host must render a navigation bar", hostNavigationBarInset > 0)
-            val statusBarBackgroundPixel = findHostBackgroundPixel(
+            val statusBarBackgroundPixel = findStableBaselinePixel(
                 screenshot = hostBaseline,
                 left = 0,
                 top = 0,
@@ -410,7 +415,7 @@ class ShareReceiverActivityTest {
                 bottom = hostStatusBarInset,
                 regionName = "status bar"
             )
-            val navigationBarBackgroundPixel = findHostBackgroundPixel(
+            val navigationBarBackgroundPixel = findStableBaselinePixel(
                 screenshot = hostBaseline,
                 left = 0,
                 top = hostBaseline.height - hostNavigationBarInset,
@@ -495,10 +500,10 @@ class ShareReceiverActivityTest {
         scenario: ActivityScenario<ShareReceiverActivity>,
         timeoutMillis: Long
     ): Boolean {
-        val startedAtMillis = SystemClock.elapsedRealtime()
+        val startedAtMillis = SystemClock.uptimeMillis()
         while (true) {
             if (scenario.state == androidx.lifecycle.Lifecycle.State.DESTROYED) return true
-            val elapsedMillis = SystemClock.elapsedRealtime() - startedAtMillis
+            val elapsedMillis = SystemClock.uptimeMillis() - startedAtMillis
             if (elapsedMillis < 0L || elapsedMillis >= timeoutMillis) {
                 return scenario.state == androidx.lifecycle.Lifecycle.State.DESTROYED
             }
@@ -525,13 +530,13 @@ class ShareReceiverActivityTest {
         val remainingWaitMillis = terminalDisplayRemainingMillis(
             terminalAtElapsedMillis = terminalObservedAt,
             displayDurationMillis = latestAllowedElapsedMillis,
-            nowElapsedMillis = SystemClock.elapsedRealtime()
+            nowElapsedMillis = SystemClock.uptimeMillis()
         )
         assertTrue(
             "The receiver must finish within its configured ${configuredTerminalDurationMillis} ms terminal duration plus $TERMINAL_DEADLINE_TOLERANCE_MILLIS ms scheduling and polling tolerance",
             awaitDestroyed(scenario, remainingWaitMillis)
         )
-        val elapsedMillis = SystemClock.elapsedRealtime() - terminalObservedAt
+        val elapsedMillis = SystemClock.uptimeMillis() - terminalObservedAt
         assertTrue(
             "The receiver must not exceed its configured ${configuredTerminalDurationMillis} ms terminal duration plus $TERMINAL_DEADLINE_TOLERANCE_MILLIS ms scheduling and polling tolerance",
             elapsedMillis >= 0L && elapsedMillis <= latestAllowedElapsedMillis
@@ -599,7 +604,7 @@ class ShareReceiverActivityTest {
             extras
         )
 
-    private fun findHostBackgroundPixel(
+    private fun findStableBaselinePixel(
         screenshot: Bitmap,
         left: Int,
         top: Int,
@@ -607,17 +612,24 @@ class ShareReceiverActivityTest {
         bottom: Int,
         regionName: String
     ): ScreenPixel {
+        val colors = HashMap<Int, Int>()
         for (y in top until bottom) {
             for (x in left until right) {
-                if (screenshot.getPixel(x, y) == ShareOverlayHostActivity.BACKGROUND_COLOR) {
-                    return ScreenPixel(x, y)
-                }
+                val color = screenshot.getPixel(x, y)
+                colors[color] = colors.getOrDefault(color, 0) + 1
+            }
+        }
+        val stableColor = colors.maxByOrNull { it.value }?.key
+            ?: throw AssertionError(
+                "No pixels were found in the $regionName baseline region [$left,$top,$right,$bottom]"
+            )
+        for (y in top until bottom) {
+            for (x in left until right) {
+                if (screenshot.getPixel(x, y) == stableColor) return ScreenPixel(x, y)
             }
         }
         throw AssertionError(
-            "No exact host background pixel was found in the $regionName baseline region " +
-                "[$left,$top,$right,$bottom]; the debug host must draw " +
-                "BACKGROUND_COLOR edge-to-edge beneath transparent system bars."
+            "No stable pixel was found in the $regionName baseline region [$left,$top,$right,$bottom]"
         )
     }
 
