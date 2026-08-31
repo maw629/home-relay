@@ -4,6 +4,7 @@ import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
 import android.os.SystemClock
+import android.view.ViewGroup
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
@@ -253,13 +254,34 @@ class ShareReceiverActivityTest {
             val cardBounds = composeRule.onNodeWithTag("share-status-card")
                 .fetchSemanticsNode()
                 .boundsInRoot
-            val screenshot = requireNotNull(instrumentation.uiAutomation.takeScreenshot())
-            val outsideCardX = if (cardBounds.left >= 16f) {
-                (cardBounds.left / 2f).toInt()
-            } else {
-                ((cardBounds.right + screenshot.width) / 2f).toInt()
+            val composeRootLocation = IntArray(2)
+            var statusBarInset = 0
+            var navigationBarInset = 0
+            lateinit var receiver: ShareReceiverActivity
+            instrumentation.runOnMainSync {
+                receiver = ActivityLifecycleMonitorRegistry.getInstance()
+                    .getActivitiesInStage(Stage.RESUMED)
+                    .filterIsInstance<ShareReceiverActivity>()
+                    .single()
+                receiver.findViewById<ViewGroup>(android.R.id.content)
+                    .getChildAt(0)
+                    .getLocationOnScreen(composeRootLocation)
+                val insets = requireNotNull(
+                    ViewCompat.getRootWindowInsets(receiver.window.decorView)
+                )
+                statusBarInset = insets.getInsets(WindowInsetsCompat.Type.statusBars()).top
+                navigationBarInset = insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom
             }
-            val outsideCardY = cardBounds.center.y.toInt()
+            val screenshot = requireNotNull(instrumentation.uiAutomation.takeScreenshot())
+            val cardLeftOnScreen = cardBounds.left + composeRootLocation[0]
+            val cardRightOnScreen = cardBounds.right + composeRootLocation[0]
+            val cardCenterYOnScreen = cardBounds.center.y + composeRootLocation[1]
+            val outsideCardX = if (cardLeftOnScreen >= 16f) {
+                (cardLeftOnScreen / 2f).toInt()
+            } else {
+                ((cardRightOnScreen + screenshot.width) / 2f).toInt()
+            }
+            val outsideCardY = cardCenterYOnScreen.toInt()
             val visibleBackground = screenshot.getPixel(outsideCardX, outsideCardY)
 
             assertColorNear(
@@ -268,18 +290,27 @@ class ShareReceiverActivityTest {
                 visibleBackground
             )
 
-            var statusBarColor = 0
-            var navigationBarColor = 0
-            instrumentation.runOnMainSync {
-                val receiver = ActivityLifecycleMonitorRegistry.getInstance()
-                    .getActivitiesInStage(Stage.RESUMED)
-                    .filterIsInstance<ShareReceiverActivity>()
-                    .single()
-                statusBarColor = receiver.window.statusBarColor
-                navigationBarColor = receiver.window.navigationBarColor
-            }
-            assertEquals("Receiver status bar must be transparent", Color.TRANSPARENT, statusBarColor)
-            assertEquals("Receiver navigation bar must be transparent", Color.TRANSPARENT, navigationBarColor)
+            assertTrue("Receiver must render a status bar", statusBarInset > 0)
+            assertTrue("Receiver must render a navigation bar", navigationBarInset > 0)
+            assertColorNear(
+                "An opaque status-bar contrast scrim must not cover the source app",
+                ShareOverlayHostActivity.BACKGROUND_COLOR,
+                screenshot.getPixel(screenshot.width / 2, statusBarInset / 2)
+            )
+            assertColorNear(
+                "An opaque navigation-bar contrast scrim must not cover the source app",
+                ShareOverlayHostActivity.BACKGROUND_COLOR,
+                screenshot.getPixel(
+                    screenshot.width / 4,
+                    screenshot.height - navigationBarInset / 2
+                )
+            )
+            assertEquals("Receiver status bar must be transparent", Color.TRANSPARENT, receiver.window.statusBarColor)
+            assertEquals(
+                "Receiver navigation bar must be transparent",
+                Color.TRANSPARENT,
+                receiver.window.navigationBarColor
+            )
         }
     }
 
