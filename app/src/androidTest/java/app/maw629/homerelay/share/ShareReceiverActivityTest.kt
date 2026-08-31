@@ -1,5 +1,8 @@
 package app.maw629.homerelay.share
 
+import android.app.Activity
+import android.app.Application
+import android.accessibilityservice.AccessibilityService
 import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
@@ -18,12 +21,15 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.filters.SdkSuppress
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
 import androidx.test.runner.lifecycle.Stage
 import app.maw629.homerelay.HomeRelayApplication
+import app.maw629.homerelay.MainActivity
 import app.maw629.homerelay.data.UploadState
 import java.util.concurrent.TimeUnit
+import java.io.File
 import kotlin.math.abs
 import kotlinx.coroutines.flow.first
 import org.junit.After
@@ -116,6 +122,142 @@ class ShareReceiverActivityTest {
                 5_000
             )
         }
+    }
+
+    @SdkSuppress(minSdkVersion = 33)
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun systemPredictiveBackDoesNotFinishReceiverWhileBlockingSourceIsPreparing() {
+        ActivityScenario.launch<ShareReceiverActivity>(blockingSendIntent()).use { scenario ->
+            assertTrue(
+                "The blocking provider must be opened before system Back is dispatched",
+                SampleContentProvider.awaitBlockingSourceStarted(5, TimeUnit.SECONDS)
+            )
+
+            assertTrue(
+                "The Android global Back route must be available on predictive-Back devices",
+                InstrumentationRegistry.getInstrumentation().uiAutomation.performGlobalAction(
+                    AccessibilityService.GLOBAL_ACTION_BACK
+                )
+            )
+
+            assertTrue(
+                "System predictive Back must not finish a receiver whose source is still preparing",
+                scenario.state != androidx.lifecycle.Lifecycle.State.DESTROYED
+            )
+            SampleContentProvider.releaseBlockingSource()
+            composeRule.waitUntilAtLeastOneExists(
+                hasText("Queued 1 file for Home Relay"),
+                5_000
+            )
+        }
+    }
+
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun blockingShareReservesPrivateTargetInDurableStagingRowBeforeReceiverCanFinish() {
+        ActivityScenario.launch<ShareReceiverActivity>(blockingSendIntent()).use { scenario ->
+            assertTrue(
+                "The blocking provider must be opened after durable staging begins",
+                SampleContentProvider.awaitBlockingSourceStarted(5, TimeUnit.SECONDS)
+            )
+
+            val row = runBlocking {
+                ApplicationProvider.getApplicationContext<HomeRelayApplication>()
+                    .container
+                    .database
+                    .uploadDao()
+                    .observeAll()
+                    .first()
+                    .single()
+            }
+
+            assertEquals(UploadState.STAGING, row.state)
+            assertEquals(
+                File(
+                    ApplicationProvider.getApplicationContext<android.content.Context>().noBackupFilesDir,
+                    "pending"
+                ).canonicalFile,
+                File(row.stagedPath).parentFile?.canonicalFile
+            )
+            assertNotEquals(
+                "A receiver with only a reserved target must remain active until staging reaches an outcome",
+                androidx.lifecycle.Lifecycle.State.DESTROYED,
+                scenario.state
+            )
+            SampleContentProvider.releaseBlockingSource()
+            composeRule.waitUntilAtLeastOneExists(
+                hasText("Queued 1 file for Home Relay"),
+                5_000
+            )
+        }
+    }
+
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun completedShareKeepsItsPrivateTargetAndQueueRowBeforeReceiverCanFinish() {
+        ActivityScenario.launch<ShareReceiverActivity>(sampleSendIntent()).use { scenario ->
+            composeRule.waitUntilAtLeastOneExists(
+                hasText("Queued 1 file for Home Relay"),
+                5_000
+            )
+
+            val row = runBlocking {
+                ApplicationProvider.getApplicationContext<HomeRelayApplication>()
+                    .container
+                    .database
+                    .uploadDao()
+                    .observeAll()
+                    .first()
+                    .single()
+            }
+
+            assertEquals(UploadState.QUEUED, row.state)
+            assertTrue(
+                "Finishing before the staged target is durable would lose the sender's URI grant",
+                File(row.stagedPath).isFile
+            )
+            assertNotEquals(
+                "The terminal overlay must remain active while reporting the durable queued row",
+                androidx.lifecycle.Lifecycle.State.DESTROYED,
+                scenario.state
+            )
+        }
+    }
+
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun shareReceiverDoesNotLaunchMainActivity() {
+        val launchedActivities = mutableListOf<Class<out Activity>>()
+        val lifecycleCallbacks = object : Application.ActivityLifecycleCallbacks {
+            override fun onActivityCreated(activity: Activity, state: android.os.Bundle?) {
+                launchedActivities += activity::class.java
+            }
+
+            override fun onActivityStarted(activity: Activity) = Unit
+            override fun onActivityResumed(activity: Activity) = Unit
+            override fun onActivityPaused(activity: Activity) = Unit
+            override fun onActivityStopped(activity: Activity) = Unit
+            override fun onActivitySaveInstanceState(activity: Activity, state: android.os.Bundle) = Unit
+            override fun onActivityDestroyed(activity: Activity) = Unit
+        }
+        ApplicationProvider.getApplicationContext<HomeRelayApplication>()
+            .registerActivityLifecycleCallbacks(lifecycleCallbacks)
+        try {
+            ActivityScenario.launch<ShareReceiverActivity>(sampleSendIntent()).use {
+                composeRule.waitUntilAtLeastOneExists(
+                    hasText("Queued 1 file for Home Relay"),
+                    5_000
+                )
+            }
+        } finally {
+            ApplicationProvider.getApplicationContext<HomeRelayApplication>()
+                .unregisterActivityLifecycleCallbacks(lifecycleCallbacks)
+        }
+        assertTrue(
+            "Sharing must never create MainActivity while showing the receiver overlay",
+            launchedActivities.none { it == MainActivity::class.java }
+        )
     }
 
     @OptIn(ExperimentalTestApi::class)

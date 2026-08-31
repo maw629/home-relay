@@ -52,10 +52,7 @@ class ShareIntakeViewModel(
     }
 
     override fun onCleared() {
-        val currentIntakeId = intakeId
-        if (currentIntakeId != null && mutableStatus.value is ShareIntakeStatus.Terminal) {
-            operations.release(currentIntakeId)
-        }
+        intakeId?.let(operations::release)
     }
 
     private fun observe(operation: StateFlow<ShareIntakeStatus>) {

@@ -21,8 +21,10 @@ replication confirmation.
 Android Share Intent
   -> ShareIntentParser
   -> ShareReceiverActivity
-  -> AndroidShareStager (no-backup private file)
-  -> UploadRepository (Room queue item)
+  -> ShareIntakeCoordinator (application-owned operation)
+  -> UploadRepository creates STAGING Room row
+  -> AndroidShareStager (row-owned no-backup private file)
+  -> UploadRepository guarded STAGING -> QUEUED transition
   -> WorkManager unique UploadWorker
   -> AndroidDocumentTreeGateway (SAF document provider)
   -> selected provider accepts write
@@ -33,7 +35,8 @@ Android Share Intent
 `ACTION_SEND` and `ACTION_SEND_MULTIPLE` with file `content://` URIs from
 `EXTRA_STREAM` or `ClipData`. It rejects text shares, `file://` URIs, and other
 schemes. The application-owned share-intake coordinator creates a durable
-`STAGING` row before opening a source URI, then stages the file before the
+`STAGING` row before opening a source URI, stages to its row-owned private
+target, and only then performs the guarded transition to `QUEUED` before the
 sender's temporary URI grant can expire.
 
 ## Components
@@ -43,13 +46,13 @@ sender's temporary URI grant can expire.
 | Application container | `HomeRelayApplication.kt` | Builds one `AppContainer`, configures custom WorkManager factory, creates notification channel, resumes durable pending work. |
 | Destination settings | `data/DestinationStore.kt`, `destination/` | Stores tree URI, validates a writable tree with a create/delete probe, and writes documents through SAF. |
 | Queue data | `data/UploadItem.kt`, `UploadDao.kt`, `HomeRelayDatabase.kt` | Persists upload metadata, guarded lifecycle transitions, and Room schema. |
-| Share intake | `share/` | Parses file intents, stages input privately, and displays share queue status. |
+| Share intake | `share/` | Parses file intents, owns application-scoped intake operations, stages to pre-recorded private targets, and displays share queue status. |
 | Queue orchestration | `domain/UploadRepository.kt`, `work/` | Creates records, schedules/cancels/retries unique work, and processes provider writes. |
 | Notifications | `notifications/UploadNotifier.kt` | Posts queued, uploading, completed, attention, and foreground-progress notifications. |
 | Main UI | `ui/` | Selects/changes destination, requests notification permission, and displays recent uploads. |
 
 `AppContainer` owns the database, destination store, gateway, notifier, stager,
-scheduler, and repository. Workers receive these dependencies from
+scheduler, repository, and share-intake coordinator. Workers receive these dependencies from
 `HomeRelayWorkerFactory`; they do not construct replacements.
 
 ## Persistent state
@@ -58,7 +61,7 @@ scheduler, and repository. Workers receive these dependencies from
 | --- | --- | --- |
 | Preferences DataStore | `destination_tree_uri` | Stores only the selected document-tree URI. |
 | Room `upload_items` | Upload metadata, state, retry count, and error code | Never stores file bytes. Schema history lives under `app/schemas/`. |
-| `noBackupFilesDir/pending` | Staged shared-file bytes | Delete only after provider success or explicit cancellation. |
+| `noBackupFilesDir/pending` | Staged shared-file bytes | Delete after provider success, explicit cancellation, source/staging failure, failed final queue transition, or interrupted-staging recovery. |
 
 `UploadItem` states are `STAGING`, `QUEUED`, `UPLOADING`, `COMPLETED`,
 `NEEDS_ATTENTION`, and `CANCELLED`. `SHARE_INTERRUPTED` is the durable error
@@ -67,11 +70,13 @@ are intentional:
 
 - Share intake creates `STAGING` before source URI access, completes only its
   own staging row to `QUEUED`, and records staging failures as
-  `NEEDS_ATTENTION`.
+  `NEEDS_ATTENTION`. Source failures delete partial and final private targets;
+  a failed final queue transition deletes the completed target but leaves its
+  `STAGING` row for interruption recovery.
 - Startup recovery converts every incomplete `STAGING` row to
   `NEEDS_ATTENTION` with `SHARE_INTERRUPTED` before worker resumption. It never
   restages a stale process-restored source URI, which may no longer have a
-  grant.
+  grant, and deletes its reserved or completed private target.
 - An active receiver recreation observes its existing application-owned intake
   operation rather than starting another staging operation. A process-restored
   receiver with no active operation waits for recovery and reports the

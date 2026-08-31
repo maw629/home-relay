@@ -178,6 +178,55 @@ class ShareIntakeCoordinatorTest {
     }
 
     @Test
+    fun destinationReadFailureKeepsCompletedFileAndRecordsAttention() = runTest {
+        val fixture = Fixture(StandardTestDispatcher(testScheduler))
+        try {
+            fixture.destination.readFailure = IllegalStateException("DataStore is unavailable")
+            fixture.stager.onStage = { target, _ ->
+                StageResult.Staged(target.apply { writeText("bytes") }, 5, "report.pdf")
+            }
+            fixture.coordinator.recoverInterruptedStaging()
+
+            val operation = fixture.coordinator.start("intake-1", listOf(reportShare))
+            advanceUntilIdle()
+
+            val item = fixture.dao.items.values.single()
+            assertEquals(UploadState.NEEDS_ATTENTION, item.state)
+            assertEquals(UploadErrorCode.DESTINATION_ACCESS_LOST, item.errorCode)
+            assertTrue(File(item.stagedPath).isFile)
+            assertEquals(1, operation.terminal().attentionCount)
+            assertEquals(
+                setOf(UploadErrorCode.DESTINATION_ACCESS_LOST),
+                operation.terminal().attentionErrors
+            )
+        } finally {
+            fixture.close()
+        }
+    }
+
+    @Test
+    fun thrownFinalQueueTransitionDeletesFileAndReportsQueueUnavailable() = runTest {
+        val fixture = Fixture(StandardTestDispatcher(testScheduler))
+        try {
+            fixture.dao.completeStagingFailure = IllegalStateException("Room is unavailable")
+            fixture.stager.onStage = { target, _ ->
+                StageResult.Staged(target.apply { writeText("bytes") }, 5, "report.pdf")
+            }
+            fixture.coordinator.recoverInterruptedStaging()
+
+            val operation = fixture.coordinator.start("intake-1", listOf(reportShare))
+            advanceUntilIdle()
+
+            val item = fixture.dao.items.values.single()
+            assertEquals(UploadState.STAGING, item.state)
+            assertFalse(File(item.stagedPath).exists())
+            assertEquals(1, operation.terminal().queueUnavailableCount)
+        } finally {
+            fixture.close()
+        }
+    }
+
+    @Test
     fun recoveryMarksExistingStagingInterruptedBeforeOpeningNewSource() = runTest {
         val fixture = Fixture(StandardTestDispatcher(testScheduler))
         try {
@@ -243,7 +292,7 @@ class ShareIntakeCoordinatorTest {
     }
 
     @Test
-    fun releaseKeepsPreparingOperationAndRemovesTerminalOperation() = runTest {
+    fun releaseDuringPreparationRemovesOperationAfterItBecomesTerminal() = runTest {
         val fixture = Fixture(StandardTestDispatcher(testScheduler))
         try {
             val stageEntered = CompletableDeferred<Unit>()
@@ -263,7 +312,6 @@ class ShareIntakeCoordinatorTest {
             assertSame(operation, fixture.coordinator.observe("intake-1"))
             completeStaging.complete(Unit)
             advanceUntilIdle()
-            fixture.coordinator.release("intake-1")
 
             assertTrue(operation.value is ShareIntakeStatus.Terminal)
             assertEquals(null, fixture.coordinator.observe("intake-1"))

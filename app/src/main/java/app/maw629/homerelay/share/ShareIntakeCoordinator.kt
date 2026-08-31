@@ -42,6 +42,7 @@ class ShareIntakeCoordinator(
     private val nowMillis: () -> Long
 ) : ShareIntakeOperations {
     private val operations = mutableMapOf<String, MutableStateFlow<ShareIntakeStatus>>()
+    private val releaseWhenTerminal = mutableSetOf<String>()
     private val recoveryGate = CompletableDeferred<Result<Unit>>()
     private val recoveryMutex = Mutex()
 
@@ -72,7 +73,7 @@ class ShareIntakeCoordinator(
         }
 
         if (startOperation) {
-            applicationScope.launchIntake(operation, shares)
+            applicationScope.launchIntake(intakeId, operation, shares)
         }
         return operation
     }
@@ -83,13 +84,18 @@ class ShareIntakeCoordinator(
 
     override fun release(intakeId: String) {
         synchronized(operations) {
-            operations[intakeId]?.takeIf { it.value is ShareIntakeStatus.Terminal }?.let {
-                operations.remove(intakeId)
+            operations[intakeId]?.let { operation ->
+                if (operation.value is ShareIntakeStatus.Terminal) {
+                    operations.remove(intakeId)
+                } else {
+                    releaseWhenTerminal += intakeId
+                }
             }
         }
     }
 
     private fun CoroutineScope.launchIntake(
+        intakeId: String,
         operation: MutableStateFlow<ShareIntakeStatus>,
         shares: List<IncomingShare>
     ) {
@@ -111,6 +117,11 @@ class ShareIntakeCoordinator(
                     attentionErrors = aggregate.attentionErrors,
                     terminalAtMillis = nowMillis()
                 )
+                synchronized(operations) {
+                    if (releaseWhenTerminal.remove(intakeId) && operations[intakeId] === operation) {
+                        operations.remove(intakeId)
+                    }
+                }
             }
         }
     }

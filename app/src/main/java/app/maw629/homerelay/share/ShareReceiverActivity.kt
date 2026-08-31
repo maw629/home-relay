@@ -164,13 +164,14 @@ internal fun ShareQueueOverlay(
     }
 }
 
-private fun ShareIntakeStatus.toQueueStatus(): ShareQueueStatus = when (this) {
+internal fun ShareIntakeStatus.toQueueStatus(): ShareQueueStatus = when (this) {
     ShareIntakeStatus.Preparing -> ShareQueueStatus.Preparing
     is ShareIntakeStatus.Terminal -> when {
         queuedCount > 0 && attentionCount == 0 && queueUnavailableCount == 0 -> {
             ShareQueueStatus.Queued(queuedCount)
         }
         queuedCount > 0 -> ShareQueueStatus.Mixed(queuedCount, attentionCount + queueUnavailableCount)
+        queueUnavailableCount > 0 -> ShareQueueStatus.QueueUnavailable
         attentionErrors == setOf(app.maw629.homerelay.data.UploadErrorCode.SHARE_INTERRUPTED) -> {
             ShareQueueStatus.ShareInterrupted
         }

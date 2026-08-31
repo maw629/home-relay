@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -159,6 +160,16 @@ class UploadDaoTest {
             }
             close()
         }
+    }
+
+    @Test
+    fun versionOneSchemaIsPackagedForMigrationTestHelper() {
+        InstrumentationRegistry.getInstrumentation().context.assets
+            .open("app.maw629.homerelay.data.HomeRelayDatabase/1.json")
+            .bufferedReader()
+            .use { schema ->
+                assertTrue(schema.readText().contains("\"version\": 1"))
+            }
     }
 
     private fun sampleUpload(state: UploadState) = UploadItem(

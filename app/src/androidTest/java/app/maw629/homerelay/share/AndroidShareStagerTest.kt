@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.io.File
+import java.util.UUID
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -15,6 +16,16 @@ import org.junit.runner.RunWith
 class AndroidShareStagerTest {
     private val context = ApplicationProvider.getApplicationContext<android.content.Context>()
     private val stager = AndroidShareStager(context)
+
+    @Test
+    fun pendingFileReservesPathWithoutCreatingThePrivateFile() {
+        val target = stager.pendingFile("uncreated-${UUID.randomUUID()}")
+
+        assertFalse(
+            "Creating the private file before staging would make an incomplete target look durable",
+            target.exists()
+        )
+    }
 
     @Test
     fun stageWritesToCallerOwnedTargetRatherThanGeneratingAnUnstoredName() = runTest {

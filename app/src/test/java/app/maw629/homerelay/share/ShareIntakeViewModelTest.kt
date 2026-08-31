@@ -2,6 +2,9 @@ package app.maw629.homerelay.share
 
 import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.ViewModelStoreOwner
 import app.maw629.homerelay.data.UploadErrorCode
 import java.util.UUID
 import kotlinx.coroutines.CompletableDeferred
@@ -89,10 +92,30 @@ class ShareIntakeViewModelTest {
         )
     }
 
+    @Test
+    fun clearingPreparingViewModelRequestsDeferredOperationRelease() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val handle = SavedStateHandle()
+        val operations = FakeShareIntakeOperations()
+        val owner = TestViewModelStoreOwner()
+        val viewModel = ViewModelProvider(owner, object : ViewModelProvider.Factory {
+            @Suppress("UNCHECKED_CAST")
+            override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T =
+                ShareIntakeViewModel(handle, operations) as T
+        })[ShareIntakeViewModel::class.java]
+
+        viewModel.beginOrAttach(listOf(reportShare))
+        val intakeId = requireNotNull(handle.get<String>(ShareIntakeViewModel.INTAKE_ID_KEY))
+        owner.viewModelStore.clear()
+
+        assertEquals(listOf(intakeId), operations.releasedIds)
+    }
+
     private class FakeShareIntakeOperations : ShareIntakeOperations {
         val startedIds = mutableListOf<String>()
         val observedIds = mutableListOf<String>()
         val operations = mutableMapOf<String, MutableStateFlow<ShareIntakeStatus>>()
+        val releasedIds = mutableListOf<String>()
         val recovery = CompletableDeferred<Result<Unit>>()
         var onStart: (String, List<IncomingShare>) -> Unit = { _, _ -> }
 
@@ -114,7 +137,13 @@ class ShareIntakeViewModelTest {
             return operations[intakeId]
         }
 
-        override fun release(intakeId: String) = Unit
+        override fun release(intakeId: String) {
+            releasedIds += intakeId
+        }
+    }
+
+    private class TestViewModelStoreOwner : ViewModelStoreOwner {
+        override val viewModelStore = ViewModelStore()
     }
 
     private companion object {
