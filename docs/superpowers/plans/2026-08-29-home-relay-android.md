@@ -1,5 +1,8 @@
 # Home Relay Android Implementation Plan
 
+> Historical Version 1 implementation plan. For the maintained implementation
+> contract, read [`docs/architecture.md`](../../architecture.md).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build a sideloaded Android app named Home Relay that receives files from the Android Share sheet and writes them to a user-selected Google Drive folder without asking for that folder again.

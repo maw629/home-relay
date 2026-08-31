@@ -1,5 +1,8 @@
 # Home Relay Android App Design
 
+> Historical Version 1 design record. For the maintained implementation
+> contract, read [`docs/architecture.md`](../../architecture.md).
+
 ## Purpose
 
 Build a private Android app named `Home Relay` that appears as `Home Relay` in Android's Share sheet. When a file is shared from Zalo, the app queues it and writes it to one Google Drive folder selected during one-time setup. Google Drive for desktop then makes the folder available on the owner's Windows laptop.
