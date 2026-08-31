@@ -83,10 +83,10 @@ class ShareReceiverActivityTest {
                 hasText("Queued 1 file for Home Relay"),
                 5_000
             )
-            val terminalObservedAt = SystemClock.uptimeMillis()
+            val terminalDisplayStartUptime = awaitTerminalDisplayStartUptime(scenario)
 
             assertVisibleBeforeConfiguredTerminalDeadline(scenario)
-            assertFinishesByConfiguredTerminalDeadline(scenario, terminalObservedAt)
+            assertFinishesByConfiguredTerminalDeadline(scenario, terminalDisplayStartUptime)
         }
     }
 
@@ -118,7 +118,7 @@ class ShareReceiverActivityTest {
     @SdkSuppress(minSdkVersion = 33)
     @OptIn(ExperimentalTestApi::class)
     @Test
-    fun systemPredictiveBackDoesNotFinishReceiverWhileBlockingSourceIsPreparing() {
+    fun systemBackDoesNotFinishReceiverWhileBlockingSourceIsPreparing() {
         ActivityScenario.launch<ShareReceiverActivity>(blockingSendIntent()).use { scenario ->
             assertTrue(
                 "The blocking provider must be opened before system Back is dispatched",
@@ -126,18 +126,19 @@ class ShareReceiverActivityTest {
             )
 
             assertTrue(
-                "The Android global Back route must be available on predictive-Back devices",
+                "The Android global Back route must be available",
                 InstrumentationRegistry.getInstrumentation().uiAutomation.performGlobalAction(
                     AccessibilityService.GLOBAL_ACTION_BACK
                 )
             )
+            waitForBackInterception(scenario)
 
             assertTrue(
-                "System predictive Back must not finish a receiver whose source is still preparing",
+                "System Back must not finish a receiver whose source is still preparing",
                 scenario.state != androidx.lifecycle.Lifecycle.State.DESTROYED
             )
             assertEquals(
-                "System predictive Back must keep a preparing receiver foreground and interactive",
+                "System Back must keep a preparing receiver foreground and interactive",
                 androidx.lifecycle.Lifecycle.State.RESUMED,
                 scenario.state
             )
@@ -302,7 +303,7 @@ class ShareReceiverActivityTest {
                 hasText("Queued 1 file for Home Relay"),
                 5_000
             )
-            val terminalObservedAt = SystemClock.uptimeMillis()
+            val terminalDisplayStartUptime = awaitTerminalDisplayStartUptime(scenario)
             lateinit var originalActivity: ShareReceiverActivity
             scenario.onActivity { activity ->
                 originalActivity = activity
@@ -323,7 +324,7 @@ class ShareReceiverActivityTest {
                 )
             }
 
-            assertFinishesByConfiguredTerminalDeadline(scenario, terminalObservedAt)
+            assertFinishesByConfiguredTerminalDeadline(scenario, terminalDisplayStartUptime)
         }
     }
 
@@ -522,25 +523,69 @@ class ShareReceiverActivityTest {
 
     private fun assertFinishesByConfiguredTerminalDeadline(
         scenario: ActivityScenario<ShareReceiverActivity>,
-        terminalObservedAt: Long
+        terminalDisplayStartUptime: Long
     ) {
         val latestAllowedElapsedMillis = configuredTerminalDurationMillis
             .coerceAtMost(Long.MAX_VALUE - TERMINAL_DEADLINE_TOLERANCE_MILLIS) +
             TERMINAL_DEADLINE_TOLERANCE_MILLIS
         val remainingWaitMillis = terminalDisplayRemainingMillis(
-            terminalAtElapsedMillis = terminalObservedAt,
+            terminalAtElapsedMillis = terminalDisplayStartUptime,
             displayDurationMillis = latestAllowedElapsedMillis,
             nowElapsedMillis = SystemClock.uptimeMillis()
         )
         assertTrue(
-            "The receiver must finish within its configured ${configuredTerminalDurationMillis} ms terminal duration plus $TERMINAL_DEADLINE_TOLERANCE_MILLIS ms scheduling and polling tolerance",
-            awaitDestroyed(scenario, remainingWaitMillis)
+            "The receiver must begin finishing within its configured ${configuredTerminalDurationMillis} ms terminal duration plus $TERMINAL_DEADLINE_TOLERANCE_MILLIS ms scheduling and polling tolerance",
+            awaitFinishingOrDestroyed(scenario, remainingWaitMillis)
         )
-        val elapsedMillis = SystemClock.uptimeMillis() - terminalObservedAt
+        val elapsedMillis = SystemClock.uptimeMillis() - terminalDisplayStartUptime
         assertTrue(
-            "The receiver must not exceed its configured ${configuredTerminalDurationMillis} ms terminal duration plus $TERMINAL_DEADLINE_TOLERANCE_MILLIS ms scheduling and polling tolerance",
+            "The receiver must begin finishing within its configured ${configuredTerminalDurationMillis} ms terminal duration plus $TERMINAL_DEADLINE_TOLERANCE_MILLIS ms scheduling and polling tolerance",
             elapsedMillis >= 0L && elapsedMillis <= latestAllowedElapsedMillis
         )
+    }
+
+    private fun awaitTerminalDisplayStartUptime(
+        scenario: ActivityScenario<ShareReceiverActivity>
+    ): Long {
+        val startedAtMillis = SystemClock.uptimeMillis()
+        while (SystemClock.uptimeMillis() - startedAtMillis < ACTIVITY_STATE_TIMEOUT_MILLIS) {
+            var displayStartUptime: Long? = null
+            scenario.onActivity { activity ->
+                displayStartUptime = activity.terminalDisplayStartUptime
+            }
+            displayStartUptime?.let { return it }
+            SystemClock.sleep(TERMINAL_POLL_INTERVAL_MILLIS)
+        }
+        throw AssertionError("The terminal status card never recorded its display start")
+    }
+
+    private fun waitForBackInterception(scenario: ActivityScenario<ShareReceiverActivity>) {
+        val startedAtMillis = SystemClock.uptimeMillis()
+        while (SystemClock.uptimeMillis() - startedAtMillis < ACTIVITY_STATE_TIMEOUT_MILLIS) {
+            var interceptedBackCount = 0
+            scenario.onActivity { activity ->
+                interceptedBackCount = activity.interceptedBackCount
+            }
+            if (interceptedBackCount > 0) return
+            SystemClock.sleep(TERMINAL_POLL_INTERVAL_MILLIS)
+        }
+        throw AssertionError("System Back was not intercepted while share staging was preparing")
+    }
+
+    private fun awaitFinishingOrDestroyed(
+        scenario: ActivityScenario<ShareReceiverActivity>,
+        timeoutMillis: Long
+    ): Boolean {
+        val startedAtMillis = SystemClock.uptimeMillis()
+        while (true) {
+            if (scenario.state == androidx.lifecycle.Lifecycle.State.DESTROYED) return true
+            var isFinishing = false
+            scenario.onActivity { activity -> isFinishing = activity.isFinishing }
+            if (isFinishing) return true
+            val elapsedMillis = SystemClock.uptimeMillis() - startedAtMillis
+            if (elapsedMillis < 0L || elapsedMillis >= timeoutMillis) return false
+            SystemClock.sleep(minOf(TERMINAL_POLL_INTERVAL_MILLIS, timeoutMillis - elapsedMillis))
+        }
     }
 
     private fun preRecreationWaitMillis(): Long =
@@ -661,6 +706,7 @@ class ShareReceiverActivityTest {
 
     private companion object {
         private const val BLOCKING_SOURCE_TIMEOUT_MILLIS = 5_000L
+        private const val ACTIVITY_STATE_TIMEOUT_MILLIS = 5_000L
         private const val MAXIMUM_TESTABLE_TERMINAL_DURATION_MILLIS = 5_000L
         private const val MINIMUM_RECREATION_TEST_DURATION_MILLIS = 2_000L
         private const val TERMINAL_POLL_INTERVAL_MILLIS = 10L

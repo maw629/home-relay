@@ -41,7 +41,10 @@ import kotlinx.coroutines.launch
 
 class ShareReceiverActivity : ComponentActivity() {
     private var intakeStatus by mutableStateOf<ShareIntakeStatus>(ShareIntakeStatus.Preparing)
-    private var terminalDisplayStartUptime by mutableStateOf<Long?>(null)
+    internal var terminalDisplayStartUptime by mutableStateOf<Long?>(null)
+        private set
+    internal var interceptedBackCount = 0
+        private set
     private lateinit var backCallback: OnBackPressedCallback
     private var platformBackCallback: OnBackInvokedCallback? = null
 
@@ -60,7 +63,9 @@ class ShareReceiverActivity : ComponentActivity() {
         terminalDisplayStartUptime = viewModel.terminalDisplayStartUptime()
 
         backCallback = object : OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() = Unit
+            override fun handleOnBackPressed() {
+                interceptedBackCount++
+            }
         }
         onBackPressedDispatcher.addCallback(this, backCallback)
         updateBackInterception(true)
@@ -69,10 +74,8 @@ class ShareReceiverActivity : ComponentActivity() {
             val terminalStatus = intakeStatus as? ShareIntakeStatus.Terminal
             if (terminalStatus != null) {
                 LaunchedEffect(terminalStatus.terminalAtMillis) {
-                    terminalDisplayStartUptime = viewModel.recordTerminalDisplayStartUptime()
-                }
-                terminalDisplayStartUptime?.let { displayStartUptime ->
-                    LaunchedEffect(displayStartUptime) {
+                    val displayStartUptime = viewModel.recordTerminalDisplayStartUptime()
+                    terminalDisplayStartUptime = displayStartUptime
                     waitForTerminalDisplay(
                         terminalAtElapsedMillis = displayStartUptime,
                         displayDurationMillis = BuildConfig.SHARE_STATUS_DISPLAY_MILLIS,
@@ -80,7 +83,6 @@ class ShareReceiverActivity : ComponentActivity() {
                         delayMillis = ::delay
                     )
                     finish()
-                    }
                 }
             }
         }
@@ -107,7 +109,7 @@ class ShareReceiverActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
 
         if (isPreparing && platformBackCallback == null) {
-            val callback = OnBackInvokedCallback {}
+            val callback = OnBackInvokedCallback { interceptedBackCount++ }
             platformBackCallback = callback
             onBackInvokedDispatcher.registerOnBackInvokedCallback(
                 OnBackInvokedDispatcher.PRIORITY_DEFAULT,
