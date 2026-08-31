@@ -2,6 +2,8 @@ package app.maw629.homerelay.share
 
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.window.OnBackInvokedCallback
 import android.window.OnBackInvokedDispatcher
@@ -35,8 +37,6 @@ import androidx.lifecycle.lifecycleScope
 import app.maw629.homerelay.BuildConfig
 import app.maw629.homerelay.HomeRelayApplication
 import app.maw629.homerelay.ui.theme.HomeRelayTheme
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
@@ -48,6 +48,8 @@ class ShareReceiverActivity : ComponentActivity() {
         private set
     private lateinit var backCallback: OnBackPressedCallback
     private var platformBackCallback: OnBackInvokedCallback? = null
+    private val terminalHandler = Handler(Looper.getMainLooper())
+    private var terminalFinishCallback: Runnable? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -62,10 +64,6 @@ class ShareReceiverActivity : ComponentActivity() {
         }
         val viewModel = ViewModelProvider(this, factory)[ShareIntakeViewModel::class.java]
         terminalDisplayStartUptime = viewModel.terminalDisplayStartUptime()
-        ShareReceiverDiagnostics.event(
-            "created",
-            "savedDisplayStart=$terminalDisplayStartUptime"
-        )
 
         backCallback = object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -79,43 +77,15 @@ class ShareReceiverActivity : ComponentActivity() {
             val terminalStatus = intakeStatus as? ShareIntakeStatus.Terminal
             if (terminalStatus != null) {
                 LaunchedEffect(terminalStatus.terminalAtMillis) {
-                    try {
-                        val displayStartUptime = viewModel.recordTerminalDisplayStartUptime()
-                        terminalDisplayStartUptime = displayStartUptime
-                        ShareReceiverDiagnostics.event(
-                            "timer_started",
-                            "displayStart=$displayStartUptime duration=${BuildConfig.SHARE_STATUS_DISPLAY_MILLIS}"
-                        )
-                        ShareReceiverDiagnostics.probeHandler(BuildConfig.SHARE_STATUS_DISPLAY_MILLIS)
-                        waitForTerminalDisplay(
-                            terminalAtElapsedMillis = displayStartUptime,
-                            displayDurationMillis = BuildConfig.SHARE_STATUS_DISPLAY_MILLIS,
-                            uptimeMillis = SystemClock::uptimeMillis,
-                            delayMillis = ::delay
-                        )
-                        ShareReceiverDiagnostics.event("finish_called")
-                        finish()
-                    } catch (error: CancellationException) {
-                        ShareReceiverDiagnostics.event("timer_cancelled", error.javaClass.simpleName)
-                        throw error
-                    } catch (error: Throwable) {
-                        ShareReceiverDiagnostics.event(
-                            "timer_failed",
-                            "${error.javaClass.simpleName}:${error.message}"
-                        )
-                    }
+                    val displayStartUptime = viewModel.recordTerminalDisplayStartUptime()
+                    terminalDisplayStartUptime = displayStartUptime
+                    scheduleTerminalFinish(displayStartUptime)
                 }
             }
         }
         lifecycleScope.launch {
             viewModel.status.collect { status ->
                 intakeStatus = status
-                if (status is ShareIntakeStatus.Terminal) {
-                    ShareReceiverDiagnostics.event(
-                        "terminal_received",
-                        "coordinatorTerminalAt=${status.terminalAtMillis}"
-                    )
-                }
                 updateBackInterception(status is ShareIntakeStatus.Preparing)
             }
         }
@@ -125,21 +95,11 @@ class ShareReceiverActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        ShareReceiverDiagnostics.event("destroyed", "isFinishing=$isFinishing")
+        terminalFinishCallback?.let(terminalHandler::removeCallbacks)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             platformBackCallback?.let(onBackInvokedDispatcher::unregisterOnBackInvokedCallback)
         }
         super.onDestroy()
-    }
-
-    override fun onPause() {
-        ShareReceiverDiagnostics.event("paused", "isFinishing=$isFinishing")
-        super.onPause()
-    }
-
-    override fun onStop() {
-        ShareReceiverDiagnostics.event("stopped", "isFinishing=$isFinishing")
-        super.onStop()
     }
 
     private fun updateBackInterception(isPreparing: Boolean) {
@@ -159,6 +119,31 @@ class ShareReceiverActivity : ComponentActivity() {
             platformBackCallback = null
         }
     }
+
+    private fun scheduleTerminalFinish(displayStartUptime: Long) {
+        terminalFinishCallback?.let(terminalHandler::removeCallbacks)
+        val callback = object : Runnable {
+            override fun run() {
+                val nextDelayMillis = terminalDisplayNextDelayMillis(
+                    terminalAtElapsedMillis = displayStartUptime,
+                    displayDurationMillis = BuildConfig.SHARE_STATUS_DISPLAY_MILLIS,
+                    nowElapsedMillis = SystemClock.uptimeMillis()
+                )
+                if (nextDelayMillis == null) {
+                    finish()
+                } else {
+                    terminalHandler.postDelayed(this, nextDelayMillis)
+                }
+            }
+        }
+        terminalFinishCallback = callback
+        val nextDelayMillis = terminalDisplayNextDelayMillis(
+            terminalAtElapsedMillis = displayStartUptime,
+            displayDurationMillis = BuildConfig.SHARE_STATUS_DISPLAY_MILLIS,
+            nowElapsedMillis = SystemClock.uptimeMillis()
+        )
+        if (nextDelayMillis == null) finish() else terminalHandler.postDelayed(callback, nextDelayMillis)
+    }
 }
 
 internal fun terminalDisplayRemainingMillis(
@@ -175,31 +160,17 @@ internal fun terminalDisplayRemainingMillis(
     return maxOf(0L, displayDurationMillis - elapsedMillis)
 }
 
-internal fun terminalDisplayDelayChunkMillis(remainingMillis: Long): Long {
-    require(remainingMillis > 0L)
-    return minOf(remainingMillis, MAXIMUM_DELAY_CHUNK_MILLIS)
-}
-
 private const val MAXIMUM_DELAY_CHUNK_MILLIS = 86_400_000L
 
-internal suspend fun waitForTerminalDisplay(
+internal fun terminalDisplayNextDelayMillis(
     terminalAtElapsedMillis: Long,
     displayDurationMillis: Long,
-    uptimeMillis: () -> Long,
-    delayMillis: suspend (Long) -> Unit
-) {
-    while (true) {
-        val remainingMillis = terminalDisplayRemainingMillis(
-            terminalAtElapsedMillis = terminalAtElapsedMillis,
-            displayDurationMillis = displayDurationMillis,
-            nowElapsedMillis = uptimeMillis()
-        )
-        if (remainingMillis == 0L) return
-        ShareReceiverDiagnostics.event("timer_delay", "remaining=$remainingMillis")
-        delayMillis(terminalDisplayDelayChunkMillis(remainingMillis))
-        ShareReceiverDiagnostics.event("timer_resumed")
-    }
-}
+    nowElapsedMillis: Long
+): Long? = terminalDisplayRemainingMillis(
+    terminalAtElapsedMillis,
+    displayDurationMillis,
+    nowElapsedMillis
+).takeIf { it > 0L }?.let { minOf(it, MAXIMUM_DELAY_CHUNK_MILLIS) }
 
 sealed interface ShareQueueStatus {
     data object Preparing : ShareQueueStatus
