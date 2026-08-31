@@ -83,7 +83,7 @@ class ShareReceiverActivityTest {
                 hasText("Queued 1 file for Home Relay"),
                 5_000
             )
-            val terminalObservedAt = SystemClock.elapsedRealtime()
+            val terminalObservedAt = SystemClock.uptimeMillis()
 
             assertVisibleBeforeConfiguredTerminalDeadline(scenario)
             assertFinishesByConfiguredTerminalDeadline(scenario, terminalObservedAt)
@@ -302,7 +302,7 @@ class ShareReceiverActivityTest {
                 hasText("Queued 1 file for Home Relay"),
                 5_000
             )
-            val terminalObservedAt = SystemClock.elapsedRealtime()
+            val terminalObservedAt = SystemClock.uptimeMillis()
             lateinit var originalActivity: ShareReceiverActivity
             scenario.onActivity { activity ->
                 originalActivity = activity
