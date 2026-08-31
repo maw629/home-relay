@@ -91,6 +91,26 @@ class UploadRepositoryTest {
     }
 
     @Test
+    fun completeStagingRejectsAResultForADifferentCanonicalPrivateFile() = runTest {
+        val durableFile = File.createTempFile("staging-target", ".file")
+        val differentFile = File.createTempFile("staging-result", ".file")
+        try {
+            val item = item("item-1", UploadState.STAGING, stagedPath = durableFile.absolutePath)
+            dao.insert(item)
+
+            assertFalse(
+                repository.completeStaging(item, StageResult.Staged(differentFile, 42, "report.pdf"))
+            )
+
+            assertEquals(UploadState.STAGING, dao.get(item.id)!!.state)
+            assertEquals(emptyList<String>(), scheduler.scheduledIds)
+        } finally {
+            durableFile.delete()
+            differentFile.delete()
+        }
+    }
+
+    @Test
     fun completeStagingKeepsTheQueuedRowWhenSchedulingFails() = runTest {
         val item = insertStagingItem()
         scheduler.scheduleFailure = IllegalStateException("WorkManager is unavailable")

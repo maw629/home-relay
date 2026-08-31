@@ -64,6 +64,14 @@ class UploadRepository(
     }
 
     suspend fun completeStaging(item: UploadItem, staged: StageResult.Staged): Boolean {
+        if (
+            !runCatching {
+                staged.file.canonicalPath == File(item.stagedPath).canonicalPath
+            }.getOrDefault(false)
+        ) {
+            return false
+        }
+
         val outputName = OutputNameFactory.create(staged.displayName, nowMillis(), randomSuffix())
         if (
             dao.completeStaging(
