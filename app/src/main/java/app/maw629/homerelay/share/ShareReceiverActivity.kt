@@ -35,6 +35,7 @@ import androidx.lifecycle.lifecycleScope
 import app.maw629.homerelay.BuildConfig
 import app.maw629.homerelay.HomeRelayApplication
 import app.maw629.homerelay.ui.theme.HomeRelayTheme
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
@@ -78,20 +79,30 @@ class ShareReceiverActivity : ComponentActivity() {
             val terminalStatus = intakeStatus as? ShareIntakeStatus.Terminal
             if (terminalStatus != null) {
                 LaunchedEffect(terminalStatus.terminalAtMillis) {
-                    val displayStartUptime = viewModel.recordTerminalDisplayStartUptime()
-                    terminalDisplayStartUptime = displayStartUptime
-                    ShareReceiverDiagnostics.event(
-                        "timer_started",
-                        "displayStart=$displayStartUptime duration=${BuildConfig.SHARE_STATUS_DISPLAY_MILLIS}"
-                    )
-                    waitForTerminalDisplay(
-                        terminalAtElapsedMillis = displayStartUptime,
-                        displayDurationMillis = BuildConfig.SHARE_STATUS_DISPLAY_MILLIS,
-                        uptimeMillis = SystemClock::uptimeMillis,
-                        delayMillis = ::delay
-                    )
-                    ShareReceiverDiagnostics.event("finish_called")
-                    finish()
+                    try {
+                        val displayStartUptime = viewModel.recordTerminalDisplayStartUptime()
+                        terminalDisplayStartUptime = displayStartUptime
+                        ShareReceiverDiagnostics.event(
+                            "timer_started",
+                            "displayStart=$displayStartUptime duration=${BuildConfig.SHARE_STATUS_DISPLAY_MILLIS}"
+                        )
+                        waitForTerminalDisplay(
+                            terminalAtElapsedMillis = displayStartUptime,
+                            displayDurationMillis = BuildConfig.SHARE_STATUS_DISPLAY_MILLIS,
+                            uptimeMillis = SystemClock::uptimeMillis,
+                            delayMillis = ::delay
+                        )
+                        ShareReceiverDiagnostics.event("finish_called")
+                        finish()
+                    } catch (error: CancellationException) {
+                        ShareReceiverDiagnostics.event("timer_cancelled", error.javaClass.simpleName)
+                        throw error
+                    } catch (error: Throwable) {
+                        ShareReceiverDiagnostics.event(
+                            "timer_failed",
+                            "${error.javaClass.simpleName}:${error.message}"
+                        )
+                    }
                 }
             }
         }
@@ -185,6 +196,7 @@ internal suspend fun waitForTerminalDisplay(
         if (remainingMillis == 0L) return
         ShareReceiverDiagnostics.event("timer_delay", "remaining=$remainingMillis")
         delayMillis(terminalDisplayDelayChunkMillis(remainingMillis))
+        ShareReceiverDiagnostics.event("timer_resumed")
     }
 }
 
