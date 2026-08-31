@@ -65,7 +65,7 @@ class ShareReceiverActivity : ComponentActivity() {
                     waitForTerminalDisplay(
                         terminalAtElapsedMillis = terminalStatus.terminalAtMillis,
                         displayDurationMillis = BuildConfig.SHARE_STATUS_DISPLAY_MILLIS,
-                        nowMillis = SystemClock::elapsedRealtime,
+                        nowMillis = SystemClock::uptimeMillis,
                         delayMillis = ::delay
                     )
                     finish()

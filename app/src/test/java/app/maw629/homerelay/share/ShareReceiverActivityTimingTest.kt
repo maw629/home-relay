@@ -27,6 +27,46 @@ class ShareReceiverActivityTimingTest {
     }
 
     @Test
+    fun chunkedTerminalWaitDoesNotScheduleAnotherDelayAfterAnOverdueResume() = runTest {
+        var nowMillis = 10L
+        val delays = mutableListOf<Long>()
+
+        waitForTerminalDisplay(
+            terminalAtElapsedMillis = 10L,
+            displayDurationMillis = 100L,
+            nowMillis = { nowMillis },
+            delayMillis = { delayMillis ->
+                delays += delayMillis
+                nowMillis += delayMillis + 1L
+            }
+        )
+
+        assertEquals(listOf(100L), delays)
+    }
+
+    @Test
+    fun chunkedTerminalWaitUsesActiveUptimeInsteadOfSleepElapsedTime() = runTest {
+        var uptimeMillis = 10L
+        val delays = mutableListOf<Long>()
+
+        waitForTerminalDisplay(
+            terminalAtElapsedMillis = 10L,
+            displayDurationMillis = 100L,
+            nowMillis = { uptimeMillis },
+            delayMillis = { delayMillis ->
+                delays += delayMillis
+                uptimeMillis += delayMillis
+            }
+        )
+
+        assertEquals(
+            "Deep sleep does not advance uptime, so the full active display duration remains",
+            listOf(100L),
+            delays
+        )
+    }
+
+    @Test
     fun delayChunkLimitsAnExtremeFiniteRemainingDuration() {
         assertEquals(
             86_400_000L,

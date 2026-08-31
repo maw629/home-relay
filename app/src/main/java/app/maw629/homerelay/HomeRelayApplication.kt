@@ -72,7 +72,7 @@ class AppContainer(context: Application, applicationScope: CoroutineScope) {
         shareStager,
         destinationStore,
         uploadRepository,
-        { SystemClock.elapsedRealtime() }
+        { SystemClock.uptimeMillis() }
     )
 }
 

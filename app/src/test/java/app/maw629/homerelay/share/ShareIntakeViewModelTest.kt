@@ -71,7 +71,11 @@ class ShareIntakeViewModelTest {
             mapOf(ShareIntakeViewModel.INTAKE_ID_KEY to "restored-intake")
         )
         val operations = FakeShareIntakeOperations()
-        val viewModel = ShareIntakeViewModel(handle, operations, nowMillis = { 1_788_013_501_999L })
+        val viewModel = ShareIntakeViewModel(
+            handle,
+            operations,
+            nowUptimeMillis = { 1_788_013_501_999L }
+        )
 
         viewModel.beginOrAttach(listOf(reportShare))
         assertEquals(ShareIntakeStatus.Preparing, viewModel.status.value)

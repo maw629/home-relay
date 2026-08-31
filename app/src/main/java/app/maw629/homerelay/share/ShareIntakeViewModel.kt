@@ -1,5 +1,6 @@
 package app.maw629.homerelay.share
 
+import android.os.SystemClock
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -15,7 +16,7 @@ import kotlinx.coroutines.launch
 class ShareIntakeViewModel(
     private val savedStateHandle: SavedStateHandle,
     private val operations: ShareIntakeOperations,
-    private val nowMillis: () -> Long = { System.currentTimeMillis() }
+    private val nowUptimeMillis: () -> Long = { SystemClock.uptimeMillis() }
 ) : ViewModel() {
     private val mutableStatus = MutableStateFlow<ShareIntakeStatus>(ShareIntakeStatus.Preparing)
     val status: StateFlow<ShareIntakeStatus> = mutableStatus.asStateFlow()
@@ -46,7 +47,7 @@ class ShareIntakeViewModel(
                 attentionCount = 1,
                 queueUnavailableCount = 0,
                 attentionErrors = setOf(UploadErrorCode.SHARE_INTERRUPTED),
-                terminalAtMillis = nowMillis()
+                terminalAtMillis = nowUptimeMillis()
             )
         }
     }
