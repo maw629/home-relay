@@ -55,6 +55,7 @@ class ShareReceiverActivityTest {
     fun clearQueueAndResetBlockingSource() = runBlocking {
         val application = ApplicationProvider.getApplicationContext<HomeRelayApplication>()
         application.container.database.clearAllTables()
+        ShareReceiverDiagnostics.clear()
         resetBlockingSource()
     }
 
@@ -538,10 +539,14 @@ class ShareReceiverActivityTest {
             nowElapsedMillis = SystemClock.uptimeMillis()
         )
         recordTestTiming("finish_wait=$remainingWaitMillis")
-        assertTrue(
-            "The receiver must begin finishing within its configured ${configuredTerminalDurationMillis} ms terminal duration plus $TERMINAL_DEADLINE_TOLERANCE_MILLIS ms scheduling and polling tolerance",
-            awaitFinishingOrDestroyed(scenario, remainingWaitMillis)
-        )
+        if (!awaitFinishingOrDestroyed(scenario, remainingWaitMillis)) {
+            throw AssertionError(
+                "The receiver must begin finishing within its configured " +
+                    "${configuredTerminalDurationMillis} ms terminal duration plus " +
+                    "$TERMINAL_DEADLINE_TOLERANCE_MILLIS ms scheduling and polling tolerance. " +
+                    "Receiver events: ${ShareReceiverDiagnostics.snapshot()}"
+            )
+        }
         val elapsedMillis = SystemClock.uptimeMillis() - terminalDisplayStartUptime
         assertTrue(
             "The receiver must begin finishing within its configured ${configuredTerminalDurationMillis} ms terminal duration plus $TERMINAL_DEADLINE_TOLERANCE_MILLIS ms scheduling and polling tolerance",
