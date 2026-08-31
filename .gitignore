@@ -33,6 +33,7 @@ google-services.json
 
 # Local Superpowers scratch artifacts
 .superpowers/
+.worktrees/
 
 # Android Profiling
 *.hprof
