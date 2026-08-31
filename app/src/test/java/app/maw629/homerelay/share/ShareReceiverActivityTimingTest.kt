@@ -16,7 +16,7 @@ class ShareReceiverActivityTimingTest {
         waitForTerminalDisplay(
             terminalAtElapsedMillis = 10L,
             displayDurationMillis = 2L * 86_400_000L,
-            nowMillis = { nowMillis },
+            uptimeMillis = { nowMillis },
             delayMillis = { delayMillis ->
                 delays += delayMillis
                 nowMillis += delayMillis
@@ -34,7 +34,7 @@ class ShareReceiverActivityTimingTest {
         waitForTerminalDisplay(
             terminalAtElapsedMillis = 10L,
             displayDurationMillis = 2L * 86_400_000L,
-            nowMillis = { nowMillis },
+            uptimeMillis = { nowMillis },
             delayMillis = { delayMillis ->
                 delays += delayMillis
                 nowMillis += 2L * 86_400_000L + 1L
@@ -53,10 +53,11 @@ class ShareReceiverActivityTimingTest {
         waitForTerminalDisplay(
             terminalAtElapsedMillis = 10L,
             displayDurationMillis = 100L,
-            nowMillis = { uptimeMillis },
+            uptimeMillis = { uptimeMillis },
             delayMillis = { delayMillis ->
                 delays += delayMillis
                 elapsedRealtimeMillis += 10_000L
+                elapsedRealtimeMillis += delayMillis
                 uptimeMillis += delayMillis
             }
         )
@@ -66,7 +67,7 @@ class ShareReceiverActivityTimingTest {
             listOf(100L),
             delays
         )
-        assertEquals(10_010L, elapsedRealtimeMillis)
+        assertEquals(10_110L, elapsedRealtimeMillis)
     }
 
     @Test
@@ -76,7 +77,7 @@ class ShareReceiverActivityTimingTest {
         waitForTerminalDisplay(
             terminalAtElapsedMillis = 10L,
             displayDurationMillis = 0L,
-            nowMillis = { 10L },
+            uptimeMillis = { 10L },
             delayMillis = { delayCalls++ }
         )
 

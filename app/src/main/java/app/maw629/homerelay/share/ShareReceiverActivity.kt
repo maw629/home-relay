@@ -65,7 +65,7 @@ class ShareReceiverActivity : ComponentActivity() {
                     waitForTerminalDisplay(
                         terminalAtElapsedMillis = terminalStatus.terminalAtMillis,
                         displayDurationMillis = BuildConfig.SHARE_STATUS_DISPLAY_MILLIS,
-                        nowMillis = SystemClock::uptimeMillis,
+                        uptimeMillis = SystemClock::uptimeMillis,
                         delayMillis = ::delay
                     )
                     finish()
@@ -108,14 +108,14 @@ private const val MAXIMUM_DELAY_CHUNK_MILLIS = 86_400_000L
 internal suspend fun waitForTerminalDisplay(
     terminalAtElapsedMillis: Long,
     displayDurationMillis: Long,
-    nowMillis: () -> Long,
+    uptimeMillis: () -> Long,
     delayMillis: suspend (Long) -> Unit
 ) {
     while (true) {
         val remainingMillis = terminalDisplayRemainingMillis(
             terminalAtElapsedMillis = terminalAtElapsedMillis,
             displayDurationMillis = displayDurationMillis,
-            nowElapsedMillis = nowMillis()
+            nowElapsedMillis = uptimeMillis()
         )
         if (remainingMillis == 0L) return
         delayMillis(terminalDisplayDelayChunkMillis(remainingMillis))
