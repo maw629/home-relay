@@ -112,8 +112,9 @@ that the provider replicated content to cloud storage or a Windows computer.
   request.
 - Android 13+ notification permission is requested only through the Settings
   flow. Queue behavior must work when it is denied.
-- The share confirmation is a full-window Compose surface with safe-drawing
-  insets. This keeps queue status below system bars on Android 15+ edge-to-edge
+- The share receiver is a non-dimming transparent window. Its only content is
+  a centered Material status card within safe-drawing insets, so the sending
+  app remains visible outside the confirmation on Android 15+ edge-to-edge
   enforcement.
 - The visible share status is one of preparing, queued count, missing
   destination, unreadable source, or local storage full.

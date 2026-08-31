@@ -8,7 +8,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithTag
 import kotlin.math.pow
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -19,7 +19,7 @@ class ShareQueueScreenVisibilityTest {
     val composeRule = createComposeRule()
 
     @Test
-    fun queuedConfirmationContrastsWithDarkThemeSurface() {
+    fun opaqueOrLowContrastCardMakesConfirmationUnreadableOverSourceApp() {
         composeRule.setContent {
             Box(
                 modifier = Modifier
@@ -34,19 +34,15 @@ class ShareQueueScreenVisibilityTest {
             }
         }
 
-        val confirmation = composeRule.onNodeWithText("Queued 1 file for Home Relay")
+        val confirmation = composeRule.onNodeWithTag("share-status-card")
             .assertExists()
             .captureToImage()
             .asAndroidBitmap()
-        val background = confirmation.getPixel(0, 0)
+        val cardSurface = confirmation.getPixel(confirmation.width / 2, confirmation.height / 4)
 
         assertTrue(
-            "Queued confirmation must be rendered on the dark Surface rather than the white host",
-            contrastRatio(background, Color.WHITE) >= 4.5
-        )
-        assertTrue(
-            "Queued confirmation must contrast with its full-screen surface",
-            confirmation.pixels().any { contrastRatio(background, it) >= 4.5 }
+            "An opaque or low-contrast card makes the confirmation unreadable over the source app",
+            confirmation.pixels().any { contrastRatio(cardSurface, it) >= 4.5 }
         )
     }
 

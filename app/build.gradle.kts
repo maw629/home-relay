@@ -16,6 +16,11 @@ val releaseSigningProperties = listOf("storeFile", "storePassword", "keyAlias", 
 val hasReleaseSigningProperties = releaseSigningProperties.all {
     !keystoreProperties.getProperty(it).isNullOrBlank()
 }
+val shareStatusDisplayMillis = providers.environmentVariable("SHARE_STATUS_DISPLAY_MILLIS")
+    .orNull
+    ?.toLongOrNull()
+    ?.takeIf { it >= 0L }
+    ?: 2_000L
 
 android {
     namespace = "app.maw629.homerelay"
@@ -31,6 +36,7 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField("long", "SHARE_STATUS_DISPLAY_MILLIS", "${shareStatusDisplayMillis}L")
     }
 
     if (hasReleaseSigningProperties) {
@@ -58,6 +64,7 @@ android {
         targetCompatibility = JavaVersion.VERSION_11
     }
     buildFeatures {
+        buildConfig = true
         compose = true
     }
 }

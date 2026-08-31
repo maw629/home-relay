@@ -1,26 +1,36 @@
 package app.maw629.homerelay.share
 
 import android.content.Intent
+import android.graphics.Color
 import android.net.Uri
+import android.os.SystemClock
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
+import androidx.test.runner.lifecycle.Stage
 import app.maw629.homerelay.HomeRelayApplication
 import app.maw629.homerelay.data.UploadState
 import java.util.concurrent.TimeUnit
+import kotlin.math.abs
 import kotlinx.coroutines.flow.first
-import org.junit.BeforeClass
-import org.junit.Before
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.BeforeClass
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -50,6 +60,34 @@ class ShareReceiverActivityTest {
             composeRule.waitUntilAtLeastOneExists(
                 hasText("Queued 1 file for Home Relay"),
                 5_000
+            )
+        }
+    }
+
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun realShareStaysVisibleForTheDefaultTerminalDurationThenFinishes() {
+        ActivityScenario.launch<ShareReceiverActivity>(sampleSendIntent()).use { scenario ->
+            composeRule.waitUntilAtLeastOneExists(
+                hasText("Queued 1 file for Home Relay"),
+                5_000
+            )
+            val terminalObservedAt = SystemClock.elapsedRealtime()
+
+            SystemClock.sleep(1_000)
+            assertNotEquals(
+                "The receiver must remain visible one second after its terminal status is observed",
+                androidx.lifecycle.Lifecycle.State.DESTROYED,
+                scenario.state
+            )
+
+            assertTrue(
+                "The receiver must finish by 2.1 seconds after its terminal status is observed",
+                awaitDestroyed(scenario, 1_100)
+            )
+            assertTrue(
+                "The default terminal status display must not exceed 2.1 seconds",
+                SystemClock.elapsedRealtime() - terminalObservedAt <= 2_100
             )
         }
     }
@@ -118,32 +156,152 @@ class ShareReceiverActivityTest {
 
     @OptIn(ExperimentalTestApi::class)
     @Test
-    fun sharedFileStatusStartsBelowStatusBarInset() {
+    fun terminalDeadlineSurvivesReceiverRecreation() {
         ActivityScenario.launch<ShareReceiverActivity>(sampleSendIntent()).use { scenario ->
-            val statusMatcher = hasText("Preparing files for Home Relay") or
-                hasText("Queued 1 file for Home Relay") or
-                hasText("Choose a destination in Home Relay before sharing files") or
-                hasText("A shared file could not be read") or
-                hasText("Not enough storage to queue shared files")
-            composeRule.waitUntilAtLeastOneExists(statusMatcher, 5_000)
-            composeRule.onNode(statusMatcher).assertIsDisplayed()
-            val statusTop = composeRule.onAllNodes(statusMatcher)
-                .fetchSemanticsNodes()
-                .single()
-                .boundsInRoot
-                .top
-            var topInset = 0
+            composeRule.waitUntilAtLeastOneExists(
+                hasText("Queued 1 file for Home Relay"),
+                5_000
+            )
+            val terminalObservedAt = SystemClock.elapsedRealtime()
+
+            SystemClock.sleep(700)
+            scenario.recreate()
+
+            assertTrue(
+                "Recreating the receiver must retain the original terminal deadline",
+                awaitDestroyed(scenario, 1_400)
+            )
+            assertTrue(
+                "Receiver recreation must not reset the default terminal status display",
+                SystemClock.elapsedRealtime() - terminalObservedAt <= 2_100
+            )
+        }
+    }
+
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun backFinishesReceiverAfterRealShareReachesTerminalStatus() {
+        ActivityScenario.launch<ShareReceiverActivity>(sampleSendIntent()).use { scenario ->
+            composeRule.waitUntilAtLeastOneExists(
+                hasText("Queued 1 file for Home Relay"),
+                5_000
+            )
+
             scenario.onActivity { activity ->
-                topInset = requireNotNull(ViewCompat.getRootWindowInsets(activity.window.decorView))
-                    .getInsets(WindowInsetsCompat.Type.statusBars())
-                    .top
+                activity.onBackPressedDispatcher.onBackPressed()
             }
 
             assertTrue(
-                "Share status must start below the status bar inset",
-                statusTop >= topInset
+                "Back must finish a receiver after its real source reaches a durable terminal outcome",
+                awaitDestroyed(scenario, 500)
             )
         }
+    }
+
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun statusCardIsCenteredInSafeDrawingCoordinates() {
+        ActivityScenario.launch<ShareReceiverActivity>(sampleSendIntent()).use { scenario ->
+            composeRule.waitUntilAtLeastOneExists(hasTestTag("share-status-card"), 5_000)
+            val cardBounds = composeRule.onNodeWithTag("share-status-card")
+                .assertIsDisplayed()
+                .fetchSemanticsNode()
+                .boundsInRoot
+            val rootBounds = composeRule.onRoot().fetchSemanticsNode().boundsInRoot
+            lateinit var safeDrawingInsets: androidx.core.graphics.Insets
+            scenario.onActivity { activity ->
+                safeDrawingInsets = requireNotNull(
+                    ViewCompat.getRootWindowInsets(activity.window.decorView)
+                ).getInsets(
+                    WindowInsetsCompat.Type.systemBars() or
+                        WindowInsetsCompat.Type.displayCutout() or
+                        WindowInsetsCompat.Type.ime()
+                )
+            }
+            val safeDrawingCenterX = rootBounds.left +
+                (safeDrawingInsets.left + rootBounds.width - safeDrawingInsets.right) / 2f
+            val safeDrawingCenterY = rootBounds.top +
+                (safeDrawingInsets.top + rootBounds.height - safeDrawingInsets.bottom) / 2f
+
+            assertEquals(
+                "Status card center must use the safe-drawing rectangle in Compose root coordinates",
+                safeDrawingCenterX,
+                cardBounds.center.x,
+                1f
+            )
+            assertEquals(
+                "Status card center must use the safe-drawing rectangle in Compose root coordinates",
+                safeDrawingCenterY,
+                cardBounds.center.y,
+                1f
+            )
+        }
+    }
+
+    @OptIn(ExperimentalTestApi::class)
+    @Suppress("DEPRECATION")
+    @Test
+    fun transparentReceiverLeavesHostBackgroundVisibleOutsideCardAndSystemBars() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        ActivityScenario.launch(ShareOverlayHostActivity::class.java).use { hostScenario ->
+            instrumentation.waitForIdleSync()
+            hostScenario.onActivity { host ->
+                host.startActivity(sampleSendIntent())
+            }
+
+            composeRule.waitUntilAtLeastOneExists(hasTestTag("share-status-card"), 5_000)
+            val cardBounds = composeRule.onNodeWithTag("share-status-card")
+                .fetchSemanticsNode()
+                .boundsInRoot
+            val screenshot = requireNotNull(instrumentation.uiAutomation.takeScreenshot())
+            val outsideCardX = if (cardBounds.left >= 16f) {
+                (cardBounds.left / 2f).toInt()
+            } else {
+                ((cardBounds.right + screenshot.width) / 2f).toInt()
+            }
+            val outsideCardY = cardBounds.center.y.toInt()
+            val visibleBackground = screenshot.getPixel(outsideCardX, outsideCardY)
+
+            assertColorNear(
+                "An opaque receiver window must not cover the source app outside the status card",
+                ShareOverlayHostActivity.BACKGROUND_COLOR,
+                visibleBackground
+            )
+
+            var statusBarColor = 0
+            var navigationBarColor = 0
+            instrumentation.runOnMainSync {
+                val receiver = ActivityLifecycleMonitorRegistry.getInstance()
+                    .getActivitiesInStage(Stage.RESUMED)
+                    .filterIsInstance<ShareReceiverActivity>()
+                    .single()
+                statusBarColor = receiver.window.statusBarColor
+                navigationBarColor = receiver.window.navigationBarColor
+            }
+            assertEquals("Receiver status bar must be transparent", Color.TRANSPARENT, statusBarColor)
+            assertEquals("Receiver navigation bar must be transparent", Color.TRANSPARENT, navigationBarColor)
+        }
+    }
+
+    private fun awaitDestroyed(
+        scenario: ActivityScenario<ShareReceiverActivity>,
+        timeoutMillis: Long
+    ): Boolean {
+        val deadline = SystemClock.elapsedRealtime() + timeoutMillis
+        while (SystemClock.elapsedRealtime() < deadline) {
+            if (scenario.state == androidx.lifecycle.Lifecycle.State.DESTROYED) return true
+            SystemClock.sleep(10)
+        }
+        return scenario.state == androidx.lifecycle.Lifecycle.State.DESTROYED
+    }
+
+    private fun assertColorNear(message: String, expected: Int, actual: Int) {
+        assertTrue(
+            message,
+            abs(Color.red(expected) - Color.red(actual)) <= 2 &&
+                abs(Color.green(expected) - Color.green(actual)) <= 2 &&
+                abs(Color.blue(expected) - Color.blue(actual)) <= 2
+        )
     }
 
     private fun sampleSendIntent() = Intent(Intent.ACTION_SEND)
