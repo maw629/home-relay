@@ -108,11 +108,13 @@ that the provider replicated content to cloud storage or a Windows computer.
   request.
 - Android 13+ notification permission is requested only through the Settings
   flow. Queue behavior must work when it is denied.
-- The share confirmation is a full-window Compose surface with safe-drawing
-  insets. This keeps queue status below system bars on Android 15+ edge-to-edge
-  enforcement.
-- The visible share status is one of preparing, queued count, missing
-  destination, unreadable source, or local storage full.
+- The share receiver is headless. It shows a transient system Toast for the
+  terminal queue status and finishes immediately, returning to the sending app.
+  There is no receiver window content, so safe-inset and surface-contrast rules
+  do not apply to it.
+- The toasted share status is one of queued count, missing destination,
+  unreadable source, or local storage full. Preparing is internal only and is
+  never toasted.
 
 ## Change impact guide
 
