@@ -62,6 +62,14 @@ sealed interface ShareQueueStatus {
     data object StorageFull : ShareQueueStatus
 }
 
+internal fun statusMessage(status: ShareQueueStatus): String = when (status) {
+    ShareQueueStatus.Preparing -> "Preparing files for Home Relay"
+    is ShareQueueStatus.Queued -> "Queued ${status.count} ${if (status.count == 1) "file" else "files"} for Home Relay"
+    ShareQueueStatus.DestinationMissing -> "Choose a destination in Home Relay before sharing files"
+    ShareQueueStatus.SourceUnreadable -> "A shared file could not be read"
+    ShareQueueStatus.StorageFull -> "Not enough storage to queue shared files"
+}
+
 @Composable
 internal fun ShareQueueScreen(
     status: ShareQueueStatus,
