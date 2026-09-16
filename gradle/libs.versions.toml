@@ -11,7 +11,7 @@ composeBom = "2026.02.01"
 dataStore = "1.2.1"
 room = "2.8.4"
 work = "2.11.2"
-coroutines = "1.10.2"
+coroutines = "1.11.0"
 robolectric = "4.16"
 ksp = "2.2.10-2.0.2"
 
