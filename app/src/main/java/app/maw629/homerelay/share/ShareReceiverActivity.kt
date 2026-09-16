@@ -16,7 +16,7 @@ class ShareReceiverActivity : ComponentActivity() {
         lifecycleScope.launch {
             try {
                 val status = queueShares(shares)
-                Toast.makeText(this@ShareReceiverActivity, statusMessage(status), Toast.LENGTH_SHORT).show()
+                Toast.makeText(applicationContext, statusMessage(status), Toast.LENGTH_SHORT).show()
             } finally {
                 finish()
             }

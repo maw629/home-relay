@@ -22,7 +22,7 @@ class ShareReceiverActivityTest {
             while (scenario.state != Lifecycle.State.DESTROYED && System.currentTimeMillis() < deadline) {
                 Thread.sleep(100)
             }
-            assertEquals(Lifecycle.State.DESTROYED, scenario.state)
+            assertEquals("Share receiver should finish after queueing", Lifecycle.State.DESTROYED, scenario.state)
         }
     }
 
