@@ -99,6 +99,18 @@ Observed debug-build UAT evidence as of 2026-08-31:
   later cloud-sync progress is outside Home Relay's control.
 - Destination-loss recovery and signed-release acceptance remain to be recorded.
 
+Observed UAT evidence as of 2026-09-16:
+
+- Destination-loss recovery via account removal behaves as designed: the item
+  reaches `NEEDS_ATTENTION` with folder reselection. Same finding on the
+  signed release build.
+- Destination folder deletion does not produce a `NEEDS_ATTENTION` item;
+  instead the provider accepts the writes into the Drive root folder. Same
+  finding on the signed release build. Recorded as observed provider
+  behavior; no app change requested.
+- Signed-release acceptance repeated the E2E cases with the same findings; no
+  open items remain.
+
 ## Release signing
 
 Create a keystore outside this repository with Android Studio's **Generate
