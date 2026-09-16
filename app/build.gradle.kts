@@ -6,6 +6,14 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+// Pin the Kotlin toolchain to JDK 21 (per AGENTS.md). With no toolchain set,
+// the Kotlin plugin defaults its JVM target from the newest JDK visible to
+// Gradle (25 in this environment), which Kotlin 2.2.10 cannot target and
+// falls back from with a warning on every build.
+kotlin {
+    jvmToolchain(21)
+}
+
 val keystorePropertiesFile = rootProject.file("keystore.properties")
 val keystoreProperties = Properties().apply {
     if (keystorePropertiesFile.isFile) {

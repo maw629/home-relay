@@ -30,13 +30,13 @@ jobs:
         with:
           # v4 default includes the obsolete `tools` package, which no longer
           # exists and makes sdkmanager exit 1. Install only real packages;
-          # API 37 + licenses are handled in the next step.
+          # the API 37 platform is installed in the next step. Licenses are
+          # accepted by the action itself (accept-android-sdk-licenses).
           packages: platform-tools
+          log-accepted-android-sdk-licenses: false
 
-      - name: Accept Android licenses and install API 37
-        run: |
-          yes | sdkmanager --licenses > /dev/null || true
-          sdkmanager "platforms;android-37.0" "platform-tools"
+      - name: Install Android API 37 platform
+        run: sdkmanager "platforms;android-37.0" "platform-tools"
 
       - name: Set up Gradle caching
         uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
