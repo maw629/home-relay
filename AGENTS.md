@@ -56,8 +56,14 @@ historical Version 1 design and plan are in `docs/superpowers/`.
 - WSL: `./gradlew testDebugUnitTest lintDebug assembleDebug`.
 - Windows with connected phone/emulator:
   `.\gradlew.bat testDebugUnitTest connectedDebugAndroidTest lintDebug`.
-- Use Android Studio's bundled JBR/JDK. Prefer JDK 21 for Gradle; JDK 25 emits
-  Kotlin target fallback warnings.
+- GitHub CI runs the JVM-only checks (`testDebugUnitTest lintDebug
+  assembleDebug` on `ubuntu-latest` with Temurin 21) on push to `main` and on
+  pull requests. CI green does not replace the Windows connected-device checks.
+- Use Android Studio's bundled JBR/JDK.
+- Gradle daemon and Kotlin toolchain are pinned to Temurin 21
+  (`gradle/gradle-daemon-jvm.properties`, `kotlin { jvmToolchain(21) }` in
+  `app/build.gradle.kts`). Do not change the JDK without re-verifying
+  warning-free builds on WSL, Windows, and CI.
 - Use Gradle wrapper scripts only. Do not install or invoke system Gradle.
 
 ## Secret and artifact hygiene

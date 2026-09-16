@@ -40,6 +40,17 @@ Run one instrumentation class with PowerShell-safe Gradle runner arguments:
 Do not use Gradle `--tests` with `connectedDebugAndroidTest`; that option does
 not filter Android instrumentation tests.
 
+### GitHub CI
+
+`.github/workflows/android-ci.yml` runs the JVM-only checks
+(`testDebugUnitTest lintDebug assembleDebug` on `ubuntu-latest` with Temurin
+21) on push to `main` and on pull requests. Test and lint reports upload as
+workflow artifacts on failure.
+
+CI has no device or emulator: `connectedDebugAndroidTest`, manual provider
+UAT, and the acceptance record below still require Windows with a connected
+phone or emulator. A green CI run does not replace them.
+
 ## Required change coverage
 
 - Add a local unit test for deterministic logic and error mapping.

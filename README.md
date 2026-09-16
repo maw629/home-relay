@@ -25,7 +25,8 @@ finished.
 
 ## Requirements
 
-- Android Studio with its bundled JBR/JDK and Android SDK API 37 installed.
+- Android Studio with its bundled JBR/JDK and Android SDK platform
+  `android-37.0` installed.
 - Android SDK Build-Tools and Platform-Tools (`adb`).
 - WSL 2 with a Linux Android SDK for local Gradle builds, if using the hybrid
   workflow below.
@@ -41,6 +42,10 @@ The app package is `app.maw629.homerelay`, `minSdk` is 26, and `compileSdk` and
 Keep the repository in the WSL filesystem when possible. Use WSL for unit
 tests, lint, and APK builds. Use Windows Android Studio and Windows `adb` for
 connected-device tests, installation, and manual UAT.
+
+The same JVM checks also run on GitHub (`Android CI` workflow) for pushes to
+`main` and pull requests; connected-device tests and manual UAT still require
+Windows with a phone or emulator.
 
 ### WSL checks
 
