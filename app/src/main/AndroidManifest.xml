@@ -32,7 +32,10 @@
         <activity
             android:name=".share.ShareReceiverActivity"
             android:exported="true"
-            android:label="Home Relay">
+            android:label="Home Relay"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:noHistory="true"
+            android:excludeFromRecents="true">
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <action android:name="android.intent.action.SEND_MULTIPLE" />
