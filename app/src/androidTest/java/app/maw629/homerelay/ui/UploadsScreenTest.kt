@@ -309,4 +309,45 @@ class UploadsScreenTest {
             headerTop < messageTop
         )
     }
+
+    @Test
+    fun emptyQueueShowsHeaderAndEmptyState() {
+        composeRule.setContent {
+            UploadsScreen(
+                uploads = emptyList(),
+                onRetry = {},
+                onCancel = {},
+                onChooseFolder = {}
+            )
+        }
+
+        composeRule.onNodeWithTag("emptyState").assertExists()
+        composeRule.onNodeWithText("No uploads yet — shared files will appear here like messages").assertExists()
+        composeRule.onNodeWithText("Home Relay").assertExists()
+        composeRule.onNodeWithText("Recent uploads").assertExists()
+    }
+
+    @Test
+    fun nonEmptyQueueHidesEmptyState() {
+        composeRule.setContent {
+            UploadsScreen(
+                uploads = listOf(
+                    UploadRow(
+                        id = "upload-1",
+                        name = "a.pdf",
+                        sizeBytes = 1,
+                        createdAtMillis = 1L,
+                        state = UploadState.COMPLETED,
+                        errorCode = UploadErrorCode.NONE,
+                        errorMessage = null
+                    )
+                ),
+                onRetry = {},
+                onCancel = {},
+                onChooseFolder = {}
+            )
+        }
+
+        composeRule.onNodeWithTag("emptyState").assertDoesNotExist()
+    }
 }

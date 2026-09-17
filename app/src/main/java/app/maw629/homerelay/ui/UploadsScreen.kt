@@ -142,10 +142,26 @@ fun UploadsScreen(
                 DayHeader(text = dayHeaderText(dayUploads.first().createdAtMillis))
             }
         }
+        if (uploads.isEmpty()) {
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "No uploads yet — shared files will appear here like messages",
+                        modifier = Modifier.testTag("emptyState")
+                    )
+                }
+            }
+        }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Home Relay")
-                Text("Recent uploads")
+                Text(
+                    text = "Home Relay",
+                    style = MaterialTheme.typography.titleLarge
+                )
+                Text(
+                    text = "Recent uploads",
+                    style = MaterialTheme.typography.bodyMedium
+                )
             }
         }
     }
