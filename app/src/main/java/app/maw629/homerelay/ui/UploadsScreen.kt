@@ -50,7 +50,7 @@ fun OwnMessageBubble(
                     style = MaterialTheme.typography.bodyLarge
                 )
                 Text(
-                    text = "${row.sizeBytes} bytes",
+                    text = formatFileSize(row.sizeBytes),
                     style = MaterialTheme.typography.bodySmall
                 )
                 Text(
