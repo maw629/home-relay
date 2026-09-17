@@ -47,7 +47,8 @@ fun formatFileSize(sizeBytes: Long): String {
         value < 100.0 -> 1
         else -> 0
     }
-    val text = String.format(Locale.ENGLISH, "%.${decimals}f", value).trimEnd('0').trimEnd('.')
+    val raw = String.format(Locale.ENGLISH, "%.${decimals}f", value)
+    val text = if ('.' in raw) raw.trimEnd('0').trimEnd('.') else raw
     return "$text $unit"
 }
 
