@@ -30,9 +30,9 @@ fun formatFileSize(sizeBytes: Long): String {
     val bytes = sizeBytes.coerceAtLeast(0L)
     if (bytes < 1_000L) return "$bytes bytes"
     val (divisor, unit) = when {
-        bytes < 1_000_000L -> 1_024.0 to "KB"
-        bytes < 1_000_000_000L -> 1_048_576.0 to "MB"
-        bytes < 1_000_000_000_000L -> 1_073_741_824.0 to "GB"
+        bytes < 1_024_000L -> 1_024.0 to "KB" // Below 1000 KB.
+        bytes < 1_048_576_000L -> 1_048_576.0 to "MB" // Below 1000 MB.
+        bytes < 1_073_741_824_000L -> 1_073_741_824.0 to "GB" // Below 1000 GB.
         else -> 1_099_511_627_776.0 to "TB"
     }
     val text = String.format(Locale.ENGLISH, "%.2f", bytes / divisor).trimEnd('0').trimEnd('.')

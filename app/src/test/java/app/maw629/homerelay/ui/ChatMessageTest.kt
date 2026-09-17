@@ -106,20 +106,23 @@ class ChatMessageTest {
 
     @Test
     fun megabytesBoundary() {
-        assertEquals("0.95 MB", formatFileSize(1_000_000L))
+        assertEquals("976.56 KB", formatFileSize(1_000_000L))
+        assertEquals("0.98 MB", formatFileSize(1_024_000L))
         assertEquals("0.99 MB", formatFileSize(1_038_336L))
         assertEquals("953.67 MB", formatFileSize(999_999_999L))
     }
 
     @Test
     fun gigabytesBoundary() {
-        assertEquals("0.93 GB", formatFileSize(1_000_000_000L))
+        assertEquals("953.67 MB", formatFileSize(1_000_000_000L))
+        assertEquals("0.98 GB", formatFileSize(1_048_576_000L))
         assertEquals("2.33 GB", formatFileSize(2_500_000_000L))
     }
 
     @Test
-    fun terabytes() {
-        assertEquals("0.91 TB", formatFileSize(1_000_000_000_000L))
+    fun terabytesBoundary() {
+        assertEquals("931.32 GB", formatFileSize(1_000_000_000_000L))
+        assertEquals("0.98 TB", formatFileSize(1_073_741_824_000L))
     }
 
     @Test
