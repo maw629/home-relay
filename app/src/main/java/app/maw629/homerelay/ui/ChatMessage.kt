@@ -67,3 +67,9 @@ fun formatMessageTime(
         else -> "${created.format(messageDateFormat)} $time"
     }
 }
+
+fun fileMonogram(fileName: String): String {
+    val ext = fileName.substringAfterLast('.', "").trim().uppercase()
+    if (ext.isEmpty()) return "···"
+    return ext.take(4)
+}
