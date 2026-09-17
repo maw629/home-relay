@@ -101,28 +101,44 @@ class ChatMessageTest {
     @Test
     fun kilobytesBoundary() {
         assertEquals("0.98 KB", formatFileSize(1_000L))
-        assertEquals("976.56 KB", formatFileSize(999_999L))
+        assertEquals("1 KB", formatFileSize(1_024L))
+        assertEquals("9.99 KB", formatFileSize(10_230L))
+        assertEquals("10.1 KB", formatFileSize(10_383L))
+        assertEquals("99.1 KB", formatFileSize(101_519L))
+        assertEquals("111 KB", formatFileSize(113_664L))
+        assertEquals("921 KB", formatFileSize(943_104L))
+        assertEquals("977 KB", formatFileSize(999_999L))
+        assertEquals("977 KB", formatFileSize(1_000_000L))
+        assertEquals("999 KB", formatFileSize(1_023_487L))
     }
 
     @Test
     fun megabytesBoundary() {
-        assertEquals("976.56 KB", formatFileSize(1_000_000L))
+        assertEquals("0.98 MB", formatFileSize(1_023_488L))
         assertEquals("0.98 MB", formatFileSize(1_024_000L))
+        assertEquals("0.98 MB", formatFileSize(1_024_001L))
         assertEquals("0.99 MB", formatFileSize(1_038_336L))
-        assertEquals("953.67 MB", formatFileSize(999_999_999L))
+        assertEquals("1 MB", formatFileSize(1_048_576L))
+        assertEquals("954 MB", formatFileSize(999_999_999L))
+        assertEquals("954 MB", formatFileSize(1_000_000_000L))
+        assertEquals("999 MB", formatFileSize(1_048_051_711L))
     }
 
     @Test
     fun gigabytesBoundary() {
-        assertEquals("953.67 MB", formatFileSize(1_000_000_000L))
+        assertEquals("0.98 GB", formatFileSize(1_048_051_712L))
         assertEquals("0.98 GB", formatFileSize(1_048_576_000L))
+        assertEquals("0.98 GB", formatFileSize(1_048_576_001L))
         assertEquals("2.33 GB", formatFileSize(2_500_000_000L))
+        assertEquals("931 GB", formatFileSize(1_000_000_000_000L))
+        assertEquals("999 GB", formatFileSize(1_073_204_953_087L))
     }
 
     @Test
     fun terabytesBoundary() {
-        assertEquals("931.32 GB", formatFileSize(1_000_000_000_000L))
+        assertEquals("0.98 TB", formatFileSize(1_073_204_953_088L))
         assertEquals("0.98 TB", formatFileSize(1_073_741_824_000L))
+        assertEquals("0.98 TB", formatFileSize(1_073_741_824_001L))
     }
 
     @Test

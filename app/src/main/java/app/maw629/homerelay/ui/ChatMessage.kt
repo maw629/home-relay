@@ -26,16 +26,28 @@ fun messageStatus(state: UploadState): MessageStatus = when (state) {
 private val messageTimeFormat = DateTimeFormatter.ofPattern("HH:mm")
 private val messageDateFormat = DateTimeFormatter.ofPattern("yyyy/MM/dd")
 
+// Unit rollover points: 999.5 of the current unit, so a displayed value
+// never rounds up to "1000 <unit>".
+private const val KB_ROLLOVER_BYTES = 1_023_488L // 999.5 × 1024
+private const val MB_ROLLOVER_BYTES = 1_048_051_712L // 999.5 × 1024²
+private const val GB_ROLLOVER_BYTES = 1_073_204_953_088L // 999.5 × 1024³
+
 fun formatFileSize(sizeBytes: Long): String {
     val bytes = sizeBytes.coerceAtLeast(0L)
     if (bytes < 1_000L) return "$bytes bytes"
     val (divisor, unit) = when {
-        bytes < 1_024_000L -> 1_024.0 to "KB" // Below 1000 KB.
-        bytes < 1_048_576_000L -> 1_048_576.0 to "MB" // Below 1000 MB.
-        bytes < 1_073_741_824_000L -> 1_073_741_824.0 to "GB" // Below 1000 GB.
+        bytes < KB_ROLLOVER_BYTES -> 1_024.0 to "KB"
+        bytes < MB_ROLLOVER_BYTES -> 1_048_576.0 to "MB"
+        bytes < GB_ROLLOVER_BYTES -> 1_073_741_824.0 to "GB"
         else -> 1_099_511_627_776.0 to "TB"
     }
-    val text = String.format(Locale.ENGLISH, "%.2f", bytes / divisor).trimEnd('0').trimEnd('.')
+    val value = bytes / divisor
+    val decimals = when {
+        value < 10.0 -> 2
+        value < 100.0 -> 1
+        else -> 0
+    }
+    val text = String.format(Locale.ENGLISH, "%.${decimals}f", value).trimEnd('0').trimEnd('.')
     return "$text $unit"
 }
 
