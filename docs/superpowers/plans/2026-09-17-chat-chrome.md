@@ -465,15 +465,12 @@ In `app/src/main/java/app/maw629/homerelay/ui/UploadsScreen.kt`, replace the lis
         }
 ```
 
-with grouped rendering that preserves the existing newest-first order (`groupBy` returns a `LinkedHashMap` in first-seen order; no re-sorting, so `reverseLayout` bottom-stick behavior is unchanged):
+with grouped rendering that preserves the existing newest-first order (`groupBy` returns a `LinkedHashMap` in first-seen order; no re-sorting, so `reverseLayout` bottom-stick behavior is unchanged). Messages are emitted before their header within each group because `reverseLayout` lays the first-composed item at the bottom — header-after lands the divider visually above its day's messages (Messenger/Zalo order):
 
 ```kotlin
     ) {
         val grouped = uploads.groupBy { dayKey(it.createdAtMillis) }
         grouped.forEach { (day, dayUploads) ->
-            item(key = "day-$day") {
-                DayHeader(text = dayHeaderText(dayUploads.first().createdAtMillis))
-            }
             items(dayUploads, key = { it.id }) { upload ->
                 OwnMessageBubble(
                     row = upload,
@@ -481,6 +478,9 @@ with grouped rendering that preserves the existing newest-first order (`groupBy`
                     onCancel = onCancel,
                     onChooseFolder = onChooseFolder
                 )
+            }
+            item(key = "day-$day") {
+                DayHeader(text = dayHeaderText(dayUploads.first().createdAtMillis))
             }
         }
 ```
