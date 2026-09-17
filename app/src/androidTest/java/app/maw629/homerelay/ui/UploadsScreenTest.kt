@@ -1,6 +1,8 @@
 package app.maw629.homerelay.ui
 
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -245,5 +247,66 @@ class UploadsScreenTest {
         composeRule.onNodeWithText("•").assertExists()
         composeRule.onNodeWithText("42 bytes").assertExists()
         composeRule.onNodeWithText("Sent ✓").assertExists()
+    }
+
+    @Test
+    fun dividersGroupUploadsByDay() {
+        val now = System.currentTimeMillis()
+        fun row(id: String, createdAt: Long) = UploadRow(
+            id = id,
+            name = "$id.pdf",
+            sizeBytes = 1,
+            createdAtMillis = createdAt,
+            state = UploadState.COMPLETED,
+            errorCode = UploadErrorCode.NONE,
+            errorMessage = null
+        )
+        composeRule.setContent {
+            UploadsScreen(
+                uploads = listOf(
+                    row("new-a", now),
+                    row("new-b", now - 60_000L),
+                    row("old", now - 10L * 86_400_000L)
+                ),
+                onRetry = {},
+                onCancel = {},
+                onChooseFolder = {}
+            )
+        }
+
+        composeRule.onAllNodesWithTag("dayHeader").assertCountEquals(2)
+        composeRule.onNodeWithText("new-a.pdf").assertExists()
+        composeRule.onNodeWithText("old.pdf").assertExists()
+    }
+
+    @Test
+    fun dayDividerRendersAboveItsMessages() {
+        composeRule.setContent {
+            UploadsScreen(
+                uploads = listOf(
+                    UploadRow(
+                        id = "upload-1",
+                        name = "solo.pdf",
+                        sizeBytes = 1,
+                        createdAtMillis = System.currentTimeMillis(),
+                        state = UploadState.COMPLETED,
+                        errorCode = UploadErrorCode.NONE,
+                        errorMessage = null
+                    )
+                ),
+                onRetry = {},
+                onCancel = {},
+                onChooseFolder = {}
+            )
+        }
+
+        val headerTop = composeRule.onNodeWithTag("dayHeader")
+            .fetchSemanticsNode().boundsInRoot.top
+        val messageTop = composeRule.onNodeWithText("solo.pdf")
+            .fetchSemanticsNode().boundsInRoot.top
+        assertTrue(
+            "Day divider must render above its messages",
+            headerTop < messageTop
+        )
     }
 }
