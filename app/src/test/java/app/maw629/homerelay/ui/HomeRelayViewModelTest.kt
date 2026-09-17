@@ -140,15 +140,59 @@ class HomeRelayViewModelTest {
         assertEquals(2L, viewModel.settingsState.value.versionCode)
     }
 
+    @Test
+    fun uploadsExcludeCancelledItems() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val dao = EmptyUploadDao(
+            MutableStateFlow(
+                listOf(
+                    UploadItem(
+                        id = "q1",
+                        originalName = "queued.pdf",
+                        mimeType = "application/pdf",
+                        outputName = "queued.pdf",
+                        stagedPath = "/pending/queued.pdf",
+                        byteSize = 10L,
+                        createdAtMillis = 1L,
+                        retryCount = 0,
+                        state = UploadState.QUEUED,
+                        errorCode = UploadErrorCode.NONE
+                    ),
+                    UploadItem(
+                        id = "c1",
+                        originalName = "cancelled.pdf",
+                        mimeType = "application/pdf",
+                        outputName = "cancelled.pdf",
+                        stagedPath = "/pending/cancelled.pdf",
+                        byteSize = 10L,
+                        createdAtMillis = 2L,
+                        retryCount = 0,
+                        state = UploadState.CANCELLED,
+                        errorCode = UploadErrorCode.NONE
+                    )
+                )
+            )
+        )
+        val viewModel = viewModel(
+            FakeDestinationRepository("content://old"),
+            FakeDestinationGateway(DestinationResult.Success),
+            dao = dao
+        )
+        advanceUntilIdle()
+
+        assertEquals(listOf("q1"), viewModel.uploads.first().map(UploadRow::id))
+    }
+
     private fun viewModel(
         store: DestinationRepository,
         gateway: DestinationGateway,
-        appVersion: AppVersionProvider = FakeAppVersionProvider("", 0L)
+        appVersion: AppVersionProvider = FakeAppVersionProvider("", 0L),
+        dao: UploadDao = EmptyUploadDao()
     ): HomeRelayViewModel =
         HomeRelayViewModel(
             store,
             gateway,
-            UploadRepository(EmptyUploadDao(), NoOpUploadScheduler(), { "id" }, { 0L }, { "suffix" }),
+            UploadRepository(dao, NoOpUploadScheduler(), { "id" }, { 0L }, { "suffix" }),
             appVersion
         )
 
@@ -204,9 +248,11 @@ class HomeRelayViewModelTest {
         override suspend fun cancel(uploadItemId: String) = Unit
     }
 
-    private class EmptyUploadDao : UploadDao {
+    private class EmptyUploadDao(
+        private val items: Flow<List<UploadItem>> = MutableStateFlow(emptyList())
+    ) : UploadDao {
         override suspend fun insert(item: UploadItem) = Unit
-        override fun observeAll(): Flow<List<UploadItem>> = MutableStateFlow(emptyList())
+        override fun observeAll(): Flow<List<UploadItem>> = items
         override suspend fun get(id: String): UploadItem? = null
         override suspend fun update(item: UploadItem) = Unit
         override suspend fun beginUpload(id: String): Int = 0
