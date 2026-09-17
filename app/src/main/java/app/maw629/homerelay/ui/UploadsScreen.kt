@@ -1,13 +1,16 @@
 package app.maw629.homerelay.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -154,6 +157,32 @@ fun UploadsScreen(
         }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        modifier = Modifier.testTag("senderAvatar"),
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.secondary
+                    ) {
+                        // Fixed square size: CircleShape on a glyph-sized box
+                        // draws an ellipse, so center the initial in a square.
+                        Box(
+                            modifier = Modifier.size(36.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "M",
+                                style = MaterialTheme.typography.labelLarge
+                            )
+                        }
+                    }
+                    Text(
+                        text = "Me",
+                        style = MaterialTheme.typography.labelLarge
+                    )
+                }
                 Text(
                     text = "Home Relay",
                     style = MaterialTheme.typography.titleLarge

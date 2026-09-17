@@ -3,6 +3,7 @@ package app.maw629.homerelay.ui
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -349,5 +350,57 @@ class UploadsScreenTest {
         }
 
         composeRule.onNodeWithTag("emptyState").assertDoesNotExist()
+    }
+
+    @Test
+    fun headerShowsSenderIdentity() {
+        composeRule.setContent {
+            UploadsScreen(
+                uploads = listOf(
+                    UploadRow(
+                        id = "upload-1",
+                        name = "a.pdf",
+                        sizeBytes = 1,
+                        createdAtMillis = 1L,
+                        state = UploadState.COMPLETED,
+                        errorCode = UploadErrorCode.NONE,
+                        errorMessage = null
+                    )
+                ),
+                onRetry = {},
+                onCancel = {},
+                onChooseFolder = {}
+            )
+        }
+
+        composeRule.onNodeWithText("Me").assertExists()
+        composeRule.onNodeWithTag("senderAvatar").assertExists()
+        composeRule.onAllNodesWithText("Me").assertCountEquals(1)
+    }
+
+    @Test
+    fun senderAvatarIsCircular() {
+        composeRule.setContent {
+            UploadsScreen(
+                uploads = listOf(
+                    UploadRow(
+                        id = "upload-1",
+                        name = "a.pdf",
+                        sizeBytes = 1,
+                        createdAtMillis = 1L,
+                        state = UploadState.COMPLETED,
+                        errorCode = UploadErrorCode.NONE,
+                        errorMessage = null
+                    )
+                ),
+                onRetry = {},
+                onCancel = {},
+                onChooseFolder = {}
+            )
+        }
+
+        val bounds = composeRule.onNodeWithTag("senderAvatar")
+            .fetchSemanticsNode().boundsInRoot
+        assertEquals(bounds.width, bounds.height, 1f)
     }
 }
