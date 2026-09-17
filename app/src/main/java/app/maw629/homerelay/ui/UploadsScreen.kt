@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -39,7 +40,7 @@ fun OwnMessageBubble(
         horizontalArrangement = Arrangement.End
     ) {
         Surface(
-            modifier = Modifier.testTag("messageBubble"),
+            modifier = Modifier.widthIn(min = 192.dp, max = 320.dp).testTag("messageBubble"),
             shape = RoundedCornerShape(16.dp),
             color = MaterialTheme.colorScheme.primaryContainer
         ) {
@@ -51,30 +52,31 @@ fun OwnMessageBubble(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    FileTypeBadge(monogram = fileMonogram(row.name))
-                    Text(
-                        text = row.name,
-                        modifier = Modifier.weight(1f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.bodyLarge
+                    FileTypeBadge(
+                        monogram = fileMonogram(row.name),
+                        color = fileBadgeColor(fileTypeLabel(row.name))
                     )
-                }
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Text(
-                        text = formatFileSize(row.sizeBytes),
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                    Text(
-                        text = "•",
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                    Text(
-                        text = formatMessageTime(row.createdAtMillis),
-                        style = MaterialTheme.typography.bodySmall
-                    )
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        Text(
+                            text = middleEllipsize(row.name),
+                            modifier = Modifier.widthIn(max = 240.dp),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                        Text(
+                            text = "${fileTypeLabel(row.name)} • ${formatFileSize(row.sizeBytes)}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = formatMessageTime(row.createdAtMillis),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
                 when (status) {
                     MessageStatus.SENDING -> {

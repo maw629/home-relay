@@ -7,6 +7,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.unit.dp
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import app.maw629.homerelay.data.UploadErrorCode
@@ -147,9 +148,72 @@ class UploadsScreenTest {
         }
 
         composeRule.onNodeWithText("report.pdf").assertExists()
-        composeRule.onNodeWithText("42 bytes").assertExists()
+        composeRule.onNodeWithText("PDF • 42 bytes").assertExists()
         composeRule.onNodeWithText(formatMessageTime(1_000_000_000_000L)).assertExists()
         composeRule.onNodeWithText("Sent ✓").assertExists()
+    }
+
+    @Test
+    fun fileCardRespectsMinWidth() {
+        composeRule.setContent {
+            UploadsScreen(
+                uploads = listOf(
+                    UploadRow(
+                        id = "short",
+                        name = "a.pdf",
+                        sizeBytes = 1,
+                        createdAtMillis = 1L,
+                        state = UploadState.COMPLETED,
+                        errorCode = UploadErrorCode.NONE,
+                        errorMessage = null
+                    )
+                ),
+                onRetry = {},
+                onCancel = {},
+                onChooseFolder = {}
+            )
+        }
+        val minPx = with(composeRule.density) { 192.dp.toPx() }
+        val maxPx = with(composeRule.density) { 320.dp.toPx() }
+        val shortWidth = composeRule.onNodeWithTag("messageBubble")
+            .fetchSemanticsNode().boundsInRoot.width
+        assertTrue(
+            "File card must be at least 192.dp wide",
+            shortWidth + 1f >= minPx
+        )
+        assertTrue(
+            "Short file card must shrink-wrap below 320.dp",
+            shortWidth <= maxPx - 1f
+        )
+    }
+
+    @Test
+    fun fileCardRespectsMaxWidth() {
+        composeRule.setContent {
+            UploadsScreen(
+                uploads = listOf(
+                    UploadRow(
+                        id = "long",
+                        name = "Consular Electronic Application Form Filled.pdf",
+                        sizeBytes = 1,
+                        createdAtMillis = 1L,
+                        state = UploadState.COMPLETED,
+                        errorCode = UploadErrorCode.NONE,
+                        errorMessage = null
+                    )
+                ),
+                onRetry = {},
+                onCancel = {},
+                onChooseFolder = {}
+            )
+        }
+        val maxPx = with(composeRule.density) { 320.dp.toPx() }
+        val longWidth = composeRule.onNodeWithTag("messageBubble")
+            .fetchSemanticsNode().boundsInRoot.width
+        assertTrue(
+            "File card must be at most 320.dp wide",
+            longWidth <= maxPx + 1f
+        )
     }
 
     @Test
@@ -245,8 +309,8 @@ class UploadsScreenTest {
 
         composeRule.onNodeWithTag("fileBadge").assertExists()
         composeRule.onNodeWithText("PDF").assertExists()
-        composeRule.onNodeWithText("•").assertExists()
-        composeRule.onNodeWithText("42 bytes").assertExists()
+        composeRule.onNodeWithText("PDF • 42 bytes").assertExists()
+        composeRule.onNodeWithText(formatMessageTime(1_000_000_000_000L)).assertExists()
         composeRule.onNodeWithText("Sent ✓").assertExists()
     }
 
