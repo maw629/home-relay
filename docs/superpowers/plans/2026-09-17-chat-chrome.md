@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make Uploads read as chat through UI-only scaffolding in 4 independently testable PRs (bubble readability, day dividers, header plus empty state, sender identity plus incoming scaffold).
+**Goal:** Make Uploads read as chat through UI-only scaffolding in 4 independently testable PRs (bubble readability, day dividers, header plus empty state, sender identity header bar).
 
 **Architecture:** No model, queue, or transport change. `UploadRow` stays the message; pure helpers (`fileMonogram`, `dayKey`, `dayHeaderText`) feed region-owned edits to `UploadsScreen.kt` plus three small new composables. Each task owns a separate code region so later PRs never restructure earlier ones.
 
@@ -31,12 +31,10 @@
 - Modify: `app/src/main/java/app/maw629/homerelay/ui/ChatMessage.kt` — add pure `fileMonogram()`, `dayKey()`, `dayHeaderText()` plus the `java.time.LocalDate` import. Single responsibility: conversation-presentation helpers with zero Android-framework calls.
 - Create: `app/src/main/java/app/maw629/homerelay/ui/FileIcon.kt` — `FileTypeBadge` composable rendering the monogram in a Material3 `Surface`. Single responsibility: file-type mark without new dependencies or icon assets.
 - Create: `app/src/main/java/app/maw629/homerelay/ui/DayHeader.kt` — centered date-divider pill with `testTag("dayHeader")`. Single responsibility: day separator rendering.
-- Create: `app/src/main/java/app/maw629/homerelay/ui/IncomingBubble.kt` — left-aligned scaffold bubble, never called from `UploadsScreen` in this plan. Single responsibility: visual contract for the future inbox feature.
 - Modify: `app/src/main/java/app/maw629/homerelay/ui/UploadsScreen.kt` — region-owned edits only: Task 1 bubble interior, Task 2 list grouping, Task 3 header/empty branch, Task 4 bubble header line. Public composable signatures unchanged.
 - Create: `app/src/test/java/app/maw629/homerelay/ui/FileIconTest.kt` — JVM unit tests for `fileMonogram()`.
 - Modify: `app/src/test/java/app/maw629/homerelay/ui/ChatMessageTest.kt` — append JVM unit tests for `dayKey()`/`dayHeaderText()`.
 - Modify: `app/src/androidTest/java/app/maw629/homerelay/ui/UploadsScreenTest.kt` — append Compose tests per task; add the `onAllNodesWithTag` import in Task 2.
-- Create: `app/src/androidTest/java/app/maw629/homerelay/ui/IncomingBubbleTest.kt` — isolated scaffold tests.
 
 Plan note vs spec: the spec says `FileIcon.kt` maps extension/MIME to a Material icon. This plan implements it as a text monogram badge (`PDF`, `JPG`, `···`) because the dependency catalog (`gradle/libs.versions.toml`) has no material-icons library and the global constraint forbids new dependencies. If an icon font is wanted later, swap only the badge interior; the `testTag("fileBadge")` contract stays.
 
@@ -55,7 +53,7 @@ Task order is the merge order (1 → 2 → 3 → 4). Each task is one PR: full W
 
 **Interfaces:**
 - Consumes: `UploadRow` (`name`, `sizeBytes`, `createdAtMillis`, `state`), `formatFileSize()`, `formatMessageTime()`.
-- Produces: `fun fileMonogram(fileName: String): String`, `@Composable fun FileTypeBadge(monogram: String, modifier: Modifier = Modifier)` with `testTag("fileBadge")` — reused by Task 4's incoming scaffold.
+- Produces: `fun fileMonogram(fileName: String): String`, `@Composable fun FileTypeBadge(monogram: String, modifier: Modifier = Modifier)` with `testTag("fileBadge")`.
 
 - [ ] **Step 1: Write the failing JVM test**
 
@@ -624,25 +622,28 @@ git add app/src/main/java/app/maw629/homerelay/ui/UploadsScreen.kt app/src/andro
 git commit -m "feat: conversation header and empty state for uploads"
 ```
 
-### Task 4: Sender identity plus incoming-bubble scaffold (PR4)
+### Task 4: Sender identity header bar (PR4)
+
+> Final shape note: Task 4 executed with an `IncomingBubble` scaffold included, then the
+> scaffold was dropped before merge (layout may change before the family inbox lands, so
+> incoming UI will be designed with that feature). The steps below describe the final
+> merged shape: header identity only.
 
 **Files:**
-- Modify: `app/src/main/java/app/maw629/homerelay/ui/UploadsScreen.kt` (`OwnMessageBubble` header lines only; add `CircleShape` import; `Alignment` import already added in Task 1)
-- Create: `app/src/main/java/app/maw629/homerelay/ui/IncomingBubble.kt`
+- Modify: `app/src/main/java/app/maw629/homerelay/ui/UploadsScreen.kt` (tail conversation header item only: sender row above `Home Relay` / `Recent uploads`; required imports already present from earlier tasks)
 - Test: `app/src/androidTest/java/app/maw629/homerelay/ui/UploadsScreenTest.kt` (append identity test)
-- Create: `app/src/androidTest/java/app/maw629/homerelay/ui/IncomingBubbleTest.kt`
 
 **Interfaces:**
 - Consumes: `FileTypeBadge`/`fileMonogram` from Task 1, meta-row structure from Task 1, list structure from Task 2. No DataStore change: sender is hardcoded `Me` with initial `M`; editable profile belongs to the follow-up spec, not this plan.
-- Produces: `testTag("senderAvatar")` on own bubbles; `@Composable fun IncomingBubble(name: String, sizeBytes: Long, createdAtMillis: Long, senderName: String, modifier: Modifier = Modifier)` with `testTag("incomingBubble")`, never called from `UploadsScreen` in this plan (referenced by its test, so no unused-code lint).
+- Produces: `testTag("senderAvatar")` on the top conversation header bar (single `Me` + circular avatar row above `Home Relay` / `Recent uploads`); own bubbles carry no sender identity.
 
 - [ ] **Step 1: Write the failing identity test**
 
-Append to `app/src/androidTest/java/app/maw629/homerelay/ui/UploadsScreenTest.kt`:
+Append to `app/src/androidTest/java/app/maw629/homerelay/ui/UploadsScreenTest.kt` (non-empty single-upload list; add the `onAllNodesWithText` import):
 
 ```kotlin
     @Test
-    fun ownBubbleShowsSenderIdentity() {
+    fun headerShowsSenderIdentity() {
         composeRule.setContent {
             UploadsScreen(
                 uploads = listOf(
@@ -664,66 +665,17 @@ Append to `app/src/androidTest/java/app/maw629/homerelay/ui/UploadsScreenTest.kt
 
         composeRule.onNodeWithText("Me").assertExists()
         composeRule.onNodeWithTag("senderAvatar").assertExists()
+        composeRule.onAllNodesWithText("Me").assertCountEquals(1)
     }
 ```
 
-- [ ] **Step 2: Write the failing scaffold test**
+- [ ] **Step 2: Move the sender identity to the tail conversation header bar**
 
-Create `app/src/androidTest/java/app/maw629/homerelay/ui/IncomingBubbleTest.kt` with exactly:
-
-```kotlin
-package app.maw629.homerelay.ui
-
-import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onNodeWithText
-import org.junit.Assert.assertTrue
-import org.junit.Rule
-import org.junit.Test
-
-class IncomingBubbleTest {
-    @get:Rule
-    val composeRule = createComposeRule()
-
-    @Test
-    fun scaffoldRendersSenderNameAndFile() {
-        composeRule.setContent {
-            IncomingBubble(
-                name = "dinner.jpg",
-                sizeBytes = 2048,
-                createdAtMillis = 1_000_000_000_000L,
-                senderName = "Mom"
-            )
-        }
-
-        composeRule.onNodeWithTag("incomingBubble").assertExists()
-        composeRule.onNodeWithText("Mom").assertExists()
-        composeRule.onNodeWithText("dinner.jpg").assertExists()
-    }
-
-    @Test
-    fun scaffoldIsLeftAligned() {
-        composeRule.setContent {
-            IncomingBubble(
-                name = "a.pdf",
-                sizeBytes = 1,
-                createdAtMillis = 1L,
-                senderName = "Mom"
-            )
-        }
-
-        val left = composeRule.onNodeWithTag("incomingBubble")
-            .fetchSemanticsNode().boundsInRoot.left
-        assertTrue("Incoming bubble must dock to the start edge, got $left", left <= 1f)
-    }
-}
-```
-
-- [ ] **Step 3: Add the sender header to `OwnMessageBubble` (additive, above the file row)**
-
-In `app/src/main/java/app/maw629/homerelay/ui/UploadsScreen.kt`, add the import `androidx.compose.foundation.shape.CircleShape`, then inside `OwnMessageBubble`'s inner `Column`, insert as the first child (before the file `Row` from Task 1):
+In `app/src/main/java/app/maw629/homerelay/ui/UploadsScreen.kt`, `OwnMessageBubble` carries no sender header (badge row, meta row, and status row from Task 1 are untouched). The tail `item` (the `Column` with `Home Relay` / `Recent uploads` texts) becomes:
 
 ```kotlin
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -733,107 +685,38 @@ In `app/src/main/java/app/maw629/homerelay/ui/UploadsScreen.kt`, add the import 
                         shape = CircleShape,
                         color = MaterialTheme.colorScheme.secondary
                     ) {
-                        Text(
-                            text = "M",
-                            modifier = Modifier.padding(8.dp),
-                            style = MaterialTheme.typography.labelLarge
-                        )
+                        // Fixed square size: CircleShape on a glyph-sized box
+                        // draws an ellipse, so center the initial in a square.
+                        Box(
+                            modifier = Modifier.size(36.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "M",
+                                style = MaterialTheme.typography.labelLarge
+                            )
+                        }
                     }
                     Text(
                         text = "Me",
                         style = MaterialTheme.typography.labelLarge
                     )
                 }
-```
-
-Meta row, badge row, and status row from Task 1 are untouched.
-
-- [ ] **Step 4: Create the incoming scaffold (never wired to the list)**
-
-Create `app/src/main/java/app/maw629/homerelay/ui/IncomingBubble.kt` with exactly:
-
-```kotlin
-package app.maw629.homerelay.ui
-
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
-
-@Composable
-fun IncomingBubble(
-    name: String,
-    sizeBytes: Long,
-    createdAtMillis: Long,
-    senderName: String,
-    modifier: Modifier = Modifier
-) {
-    Row(
-        modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.Start
-    ) {
-        Surface(
-            modifier = Modifier.testTag("incomingBubble"),
-            shape = RoundedCornerShape(16.dp),
-            color = MaterialTheme.colorScheme.secondaryContainer
-        ) {
-            Column(
-                modifier = Modifier.padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
                 Text(
-                    text = senderName,
-                    style = MaterialTheme.typography.labelLarge
+                    text = "Home Relay",
+                    style = MaterialTheme.typography.titleLarge
                 )
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    FileTypeBadge(monogram = fileMonogram(name))
-                    Text(
-                        text = name,
-                        modifier = Modifier.weight(1f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.bodyLarge
-                    )
-                }
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Text(
-                        text = formatFileSize(sizeBytes),
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                    Text(
-                        text = "•",
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                    Text(
-                        text = formatMessageTime(createdAtMillis),
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
+                Text(
+                    text = "Recent uploads",
+                    style = MaterialTheme.typography.bodyMedium
+                )
             }
         }
-    }
-}
 ```
 
-Do not reference `IncomingBubble` from `UploadsScreen`; it is referenced by `IncomingBubbleTest`, so no unused-code lint is expected and no `@Suppress` is added.
+Required imports (`Box`, `size`, `CircleShape`, `Alignment`, `testTag`) are already present from earlier tasks; do not leave unused imports behind.
 
-- [ ] **Step 5: Run the PR4 gate**
+- [ ] **Step 3: Run the PR4 gate**
 
 Run: `./gradlew testDebugUnitTest lintDebug assembleDebug`
 Expected: PASS with no new warnings. Then on Windows:
@@ -841,15 +724,13 @@ Expected: PASS with no new warnings. Then on Windows:
 ```powershell
 .\gradlew.bat connectedDebugAndroidTest `
   '-Pandroid.testInstrumentationRunnerArguments.class=app.maw629.homerelay.ui.UploadsScreenTest'
-.\gradlew.bat connectedDebugAndroidTest `
-  '-Pandroid.testInstrumentationRunnerArguments.class=app.maw629.homerelay.ui.IncomingBubbleTest'
 ```
 
 Expected: PASS, including `bubbleDoesNotSpanFullWidth` still green (own bubbles keep their left gutter).
 
-- [ ] **Step 6: Commit (PR4)**
+- [ ] **Step 4: Commit (PR4)**
 
 ```bash
-git add app/src/main/java/app/maw629/homerelay/ui/UploadsScreen.kt app/src/main/java/app/maw629/homerelay/ui/IncomingBubble.kt app/src/androidTest/java/app/maw629/homerelay/ui/UploadsScreenTest.kt app/src/androidTest/java/app/maw629/homerelay/ui/IncomingBubbleTest.kt
-git commit -m "feat: sender identity and incoming bubble scaffold"
+git add app/src/main/java/app/maw629/homerelay/ui/UploadsScreen.kt app/src/androidTest/java/app/maw629/homerelay/ui/UploadsScreenTest.kt
+git commit -m "feat: sender identity header bar"
 ```

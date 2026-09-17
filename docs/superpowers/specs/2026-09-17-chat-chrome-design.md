@@ -7,8 +7,8 @@
 ## Purpose
 
 Make the Uploads conversation feel like a chat tool through pure UI
-scaffolding: readable bubbles, day dividers, conversation header, sender
-label, and an incoming-bubble scaffold for later. No backend, no sync, no
+scaffolding: readable bubbles, day dividers, conversation header with
+sender avatar, and empty state. No backend, no sync, no
 data-model change. This is the approved option A, split into independently
 testable PRs that do not rewrite each other.
 
@@ -19,9 +19,9 @@ Included:
 - Bubble readability polish (file-type icon, `size • time` meta row).
 - Day grouping with date dividers.
 - Conversation header refresh plus true empty state.
-- Hardcoded `"Me"` sender label plus avatar initial on own bubbles.
-- Left-aligned `IncomingBubble` scaffold composable, never rendered in the
-  list yet, covered by its own tests.
+- Hardcoded `"Me"` sender label plus circular avatar initial in the top
+  conversation header bar (`senderAvatar` test tag lives on the header,
+  not in bubbles).
 
 Excluded:
 
@@ -56,9 +56,11 @@ Current state (`ui/UploadsScreen.kt`, `ui/ChatMessage.kt`,
 ## Approaches considered
 
 A. Chat chrome scaffolding, 4 stacked PRs (chosen). Each PR owns a separate
-region (bubble body / list structure / header-empty / bubble header +
-scaffold file), so nothing is restructured twice. Zero migration, fully
-reversible per PR.
+region (bubble body / list structure / header-empty / header identity), so
+nothing is restructured twice. Zero migration, fully reversible per PR. (The
+incoming-bubble scaffold originally scoped to PR4 was dropped before merge:
+layout may change before the family inbox lands, so it will be redesigned
+with that feature instead.)
 
 B. One big PR for all of A. Rejected: harder to review, harder to revert,
 against the explicit request for PR gates.
@@ -90,12 +92,11 @@ Order is additive so later PRs do not restructure earlier ones:
   proposed text `No uploads yet — shared files will appear here like
   messages` (exact wording may be adjusted in the PR).
   No bubble or grouping change.
-- **PR4 — Identity + incoming scaffold.** Additive only. `OwnMessageBubble`
-  gains a header line (`Me` + avatar-initial circle, hardcoded `"M"`/`Me`,
-  no DataStore) above the file name; meta/body from PR1 untouched. New
-  `ui/IncomingBubble.kt`, left-aligned (`Arrangement.Start`,
-  `secondaryContainer`), same meta-row structure, never called from
-  `UploadsScreen` yet.
+- **PR4 — Identity (header bar).** Additive only. The tail
+conversation header item gains a sender row (`Me` + avatar-initial
+circle, hardcoded `"M"`/`Me`, no DataStore) above the `Home Relay` /
+`Recent uploads` texts; own bubbles stay as PR1 left them (no in-bubble
+identity).
 
 ### Component changes
 
@@ -103,8 +104,7 @@ Order is additive so later PRs do not restructure earlier ones:
   composable signatures unchanged (`uploads`, `onRetry`, `onCancel`,
   `onChooseFolder`).
 - `ui/ChatMessage.kt`: adds `dayKey`/`dayHeaderText` pure functions only.
-- New files: `ui/FileIcon.kt` (PR1), `ui/DayHeader.kt` (PR2),
-  `ui/IncomingBubble.kt` (PR4, scaffold).
+- New files: `ui/FileIcon.kt` (PR1), `ui/DayHeader.kt` (PR2).
 - No changes to `UploadItem`, DAO, database schemas, repository, worker,
   scheduler, destination store/gateway, notifier, share intake, Settings,
   or navigation.
@@ -116,8 +116,6 @@ Order is additive so later PRs do not restructure earlier ones:
 - Long names still single-line ellipsis; layout follows system RTL;
   dividers use the same `zone`-based calendar-day logic as
   `formatMessageTime` (future timestamps render as today).
-- `IncomingBubble` is dead code by design until the inbox feature wires it;
-  lint `unused` risk is accepted and documented here (scaffold, tested).
 
 ## Testing
 
@@ -129,9 +127,8 @@ Order is additive so later PRs do not restructure earlier ones:
   newest-visually-lowest preserved.
 - PR3: Compose — empty list shows header + empty copy; non-empty list shows
   header without empty copy.
-- PR4: Compose — own bubbles show `Me` + initial; `IncomingBubble` renders
-  name/meta/status in isolation with left gutter (mirror of
-  `bubbleDoesNotSpanFullWidth`).
+- PR4: Compose — top conversation header shows `Me` + circular avatar
+  initial exactly once.
 - Per-PR gates (WSL): `./gradlew testDebugUnitTest lintDebug
   assembleDebug`. Windows `connectedDebugAndroidTest` plus manual UAT before
   merge for UI PRs, per `AGENTS.md`; no device behavior claimed without a
@@ -144,14 +141,12 @@ Order is additive so later PRs do not restructure earlier ones:
   to two lines on overflow.
 - PR2 grouping must not disturb `reverseLayout` bottom-stick; mitigation:
   group the already-sorted list without re-sorting, confirm on device.
-- PR4 dead-code lint: add a `@Suppress` with link to this spec, or a
-  `@Preview`, so intent is explicit.
 
 ## Forward compatibility (not built)
 
 - `DayHeader`, `FileIcon`, and the meta-row structure are intended for reuse
   by real chat messages.
-- `IncomingBubble` is the visual contract the future Drive-inbox or P2P
-  feature will wire to; no mapping is pre-designed here.
+- Incoming-message UI will be designed with the family-inbox feature, when
+  the layout requirements are known.
 - Editable profile name (DataStore) and compose/caption box belong to the
   next spec (option B), not this one.
