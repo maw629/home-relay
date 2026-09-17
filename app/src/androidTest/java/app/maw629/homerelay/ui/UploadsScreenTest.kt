@@ -218,4 +218,32 @@ class UploadsScreenTest {
             bubble.boundsInRoot.left > 0
         )
     }
+
+    @Test
+    fun bubbleShowsFileBadgeAndMetaSeparator() {
+        composeRule.setContent {
+            UploadsScreen(
+                uploads = listOf(
+                    UploadRow(
+                        id = "upload-1",
+                        name = "report.pdf",
+                        sizeBytes = 42,
+                        createdAtMillis = 1_000_000_000_000L,
+                        state = UploadState.COMPLETED,
+                        errorCode = UploadErrorCode.NONE,
+                        errorMessage = null
+                    )
+                ),
+                onRetry = {},
+                onCancel = {},
+                onChooseFolder = {}
+            )
+        }
+
+        composeRule.onNodeWithTag("fileBadge").assertExists()
+        composeRule.onNodeWithText("PDF").assertExists()
+        composeRule.onNodeWithText("•").assertExists()
+        composeRule.onNodeWithText("42 bytes").assertExists()
+        composeRule.onNodeWithText("Sent ✓").assertExists()
+    }
 }

@@ -14,6 +14,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
@@ -43,20 +44,35 @@ fun OwnMessageBubble(
                 modifier = Modifier.padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Text(
-                    text = row.name,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.bodyLarge
-                )
-                Text(
-                    text = formatFileSize(row.sizeBytes),
-                    style = MaterialTheme.typography.bodySmall
-                )
-                Text(
-                    text = formatMessageTime(row.createdAtMillis),
-                    style = MaterialTheme.typography.bodySmall
-                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    FileTypeBadge(monogram = fileMonogram(row.name))
+                    Text(
+                        text = row.name,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                }
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = formatFileSize(row.sizeBytes),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Text(
+                        text = "•",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Text(
+                        text = formatMessageTime(row.createdAtMillis),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
                 when (status) {
                     MessageStatus.SENDING -> {
                         Text(
