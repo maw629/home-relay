@@ -62,7 +62,7 @@ class HomeRelayViewModel(
 
     val uploads: StateFlow<List<UploadRow>> = uploadRepository.observeUploads()
         .map { uploads ->
-            uploads.map { upload ->
+            uploads.filter { it.state != UploadState.CANCELLED }.map { upload ->
                 UploadRow(
                     id = upload.id,
                     name = upload.originalName,
