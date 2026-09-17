@@ -7,6 +7,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.lifecycle.ViewModelProvider
 import app.maw629.homerelay.ui.HomeRelayViewModel
 import app.maw629.homerelay.ui.HomeRelayApp
+import app.maw629.homerelay.ui.PackageManagerAppVersionProvider
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -19,7 +20,8 @@ class MainActivity : ComponentActivity() {
                 return HomeRelayViewModel(
                     container.destinationStore,
                     container.destinationGateway,
-                    container.uploadRepository
+                    container.uploadRepository,
+                    PackageManagerAppVersionProvider(applicationContext)
                 ) as T
             }
         })[HomeRelayViewModel::class.java]

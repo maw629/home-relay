@@ -61,4 +61,21 @@ class SettingsScreenTest {
 
         composeRule.onNodeWithText("Upload notifications enabled").assertExists()
     }
+
+    @Test
+    fun appVersionAndBuildNumberAreDisplayed() {
+        composeRule.setContent {
+            SettingsScreen(
+                state = SettingsState(
+                    destinationName = null,
+                    versionName = "1.1",
+                    versionCode = 2L
+                ),
+                onChooseFolder = {}
+            )
+        }
+
+        composeRule.onNodeWithText("Version 1.1").assertExists()
+        composeRule.onNodeWithText("Build number 2").assertExists()
+    }
 }
