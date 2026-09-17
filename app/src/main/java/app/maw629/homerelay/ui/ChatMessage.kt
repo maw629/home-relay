@@ -75,6 +75,17 @@ fun fileMonogram(fileName: String): String {
     return ext.take(4)
 }
 
+fun middleEllipsize(fileName: String, maxLength: Int = 28): String {
+    if (fileName.length <= maxLength) return fileName
+    val budget = maxLength - 3
+    val headChars = (budget + 1) / 2
+    val tailChars = budget - headChars
+    return fileName.take(headChars) + "..." + fileName.takeLast(tailChars)
+}
+
+fun fileTypeLabel(fileName: String): String =
+    fileName.substringAfterLast('.', "").trim().uppercase().takeIf { it.isNotEmpty() } ?: "FILE"
+
 fun dayKey(
     createdAtMillis: Long,
     zone: ZoneId = ZoneId.systemDefault()
