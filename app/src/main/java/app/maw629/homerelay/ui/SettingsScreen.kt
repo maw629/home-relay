@@ -36,5 +36,7 @@ fun SettingsScreen(
                 Text("Enable upload notifications")
             }
         }
+        Text("Version ${state.versionName}")
+        Text("Build number ${state.versionCode}")
     }
 }

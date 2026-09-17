@@ -22,7 +22,9 @@ import kotlinx.coroutines.launch
 
 data class SettingsState(
     val destinationName: String?,
-    val error: String? = null
+    val error: String? = null,
+    val versionName: String = "",
+    val versionCode: Long = 0L
 )
 
 data class UploadRow(
@@ -43,12 +45,18 @@ interface PersistableUriPermissionTaker {
 class HomeRelayViewModel(
     private val destinationStore: DestinationRepository,
     private val gateway: DestinationGateway,
-    private val uploadRepository: UploadRepository
+    private val uploadRepository: UploadRepository,
+    private val appVersionProvider: AppVersionProvider
 ) : ViewModel() {
     private val destinationError = MutableStateFlow<String?>(null)
     val settingsState: StateFlow<SettingsState> = destinationStore.destinationTreeUri
         .combine(destinationError) { uri, error ->
-            SettingsState(destinationName = uri?.let { "Drive folder selected" }, error = error)
+            SettingsState(
+                destinationName = uri?.let { "Drive folder selected" },
+                error = error,
+                versionName = appVersionProvider.versionName,
+                versionCode = appVersionProvider.versionCode
+            )
         }
         .stateIn(viewModelScope, SharingStarted.Eagerly, SettingsState(destinationName = null))
 

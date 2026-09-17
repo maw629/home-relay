@@ -126,15 +126,36 @@ class HomeRelayViewModelTest {
         assertEquals(listOf("content://new/tree/drive"), permissionTaker.destinationWhenReleased)
     }
 
+    @Test
+    fun settingsStateExposesAppVersionFromProvider() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val viewModel = viewModel(
+            FakeDestinationRepository("content://old"),
+            FakeDestinationGateway(DestinationResult.Success),
+            FakeAppVersionProvider("1.1", 2L)
+        )
+        advanceUntilIdle()
+
+        assertEquals("1.1", viewModel.settingsState.value.versionName)
+        assertEquals(2L, viewModel.settingsState.value.versionCode)
+    }
+
     private fun viewModel(
         store: DestinationRepository,
-        gateway: DestinationGateway
+        gateway: DestinationGateway,
+        appVersion: AppVersionProvider = FakeAppVersionProvider("", 0L)
     ): HomeRelayViewModel =
         HomeRelayViewModel(
             store,
             gateway,
-            UploadRepository(EmptyUploadDao(), NoOpUploadScheduler(), { "id" }, { 0L }, { "suffix" })
+            UploadRepository(EmptyUploadDao(), NoOpUploadScheduler(), { "id" }, { 0L }, { "suffix" }),
+            appVersion
         )
+
+    private class FakeAppVersionProvider(
+        override val versionName: String,
+        override val versionCode: Long
+    ) : AppVersionProvider
 
     private class RecordingPermissionTaker(
         private val destination: (() -> String?)? = null,
