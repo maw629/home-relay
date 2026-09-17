@@ -205,4 +205,52 @@ class ChatMessageTest {
     fun negativeSizeCoercedToZero() {
         assertEquals(formatFileSize(-5L), "0 bytes")
     }
+
+    @Test
+    fun dayKeyResolvesUtcCalendarDay() {
+        assertEquals(
+            java.time.LocalDate.of(2001, 9, 9),
+            dayKey(1_000_000_000_000L, ZoneId.of("UTC"))
+        )
+    }
+
+    @Test
+    fun sameDayHeaderShowsToday() {
+        assertEquals(
+            "Today",
+            dayHeaderText(1_000_000_060_000L, 1_000_003_600_000L, ZoneId.of("UTC"))
+        )
+    }
+
+    @Test
+    fun previousDayHeaderShowsYesterday() {
+        assertEquals(
+            "Yesterday",
+            dayHeaderText(1_000_000_000_000L, 1_000_086_400_000L, ZoneId.of("UTC"))
+        )
+    }
+
+    @Test
+    fun threeDaysAgoHeaderShowsWeekday() {
+        assertEquals(
+            "Sunday",
+            dayHeaderText(1_000_000_000_000L, 1_000_259_200_000L, ZoneId.of("UTC"))
+        )
+    }
+
+    @Test
+    fun sevenDaysAgoHeaderShowsDate() {
+        assertEquals(
+            "2001/09/09",
+            dayHeaderText(1_000_000_000_000L, 1_000_604_800_000L, ZoneId.of("UTC"))
+        )
+    }
+
+    @Test
+    fun futureHeaderShowsToday() {
+        assertEquals(
+            "Today",
+            dayHeaderText(1_000_003_600_000L, 1_000_000_000_000L, ZoneId.of("UTC"))
+        )
+    }
 }

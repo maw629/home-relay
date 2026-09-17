@@ -126,13 +126,21 @@ fun UploadsScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp),
         reverseLayout = true
     ) {
-        items(uploads, key = { it.id }) { upload ->
-            OwnMessageBubble(
-                row = upload,
-                onRetry = onRetry,
-                onCancel = onCancel,
-                onChooseFolder = onChooseFolder
-            )
+        val grouped = uploads.groupBy { dayKey(it.createdAtMillis) }
+        grouped.forEach { (day, dayUploads) ->
+            // Messages first: with reverseLayout the later-composed header
+            // lands visually above its day's messages (Messenger/Zalo order).
+            items(dayUploads, key = { it.id }) { upload ->
+                OwnMessageBubble(
+                    row = upload,
+                    onRetry = onRetry,
+                    onCancel = onCancel,
+                    onChooseFolder = onChooseFolder
+                )
+            }
+            item(key = "day-$day") {
+                DayHeader(text = dayHeaderText(dayUploads.first().createdAtMillis))
+            }
         }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {

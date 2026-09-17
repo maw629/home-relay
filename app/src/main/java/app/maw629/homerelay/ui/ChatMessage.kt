@@ -2,6 +2,7 @@ package app.maw629.homerelay.ui
 
 import app.maw629.homerelay.data.UploadState
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
@@ -72,4 +73,25 @@ fun fileMonogram(fileName: String): String {
     val ext = fileName.substringAfterLast('.', "").trim().uppercase()
     if (ext.isEmpty()) return "···"
     return ext.take(4)
+}
+
+fun dayKey(
+    createdAtMillis: Long,
+    zone: ZoneId = ZoneId.systemDefault()
+): LocalDate = Instant.ofEpochMilli(createdAtMillis).atZone(zone).toLocalDate()
+
+fun dayHeaderText(
+    dayStartMillis: Long,
+    nowMillis: Long = System.currentTimeMillis(),
+    zone: ZoneId = ZoneId.systemDefault()
+): String {
+    val day = Instant.ofEpochMilli(dayStartMillis).atZone(zone).toLocalDate()
+    val today = Instant.ofEpochMilli(nowMillis).atZone(zone).toLocalDate()
+    val daysAgo = ChronoUnit.DAYS.between(day, today).toInt()
+    return when {
+        daysAgo <= 0 -> "Today"
+        daysAgo == 1 -> "Yesterday"
+        daysAgo < 7 -> day.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.ENGLISH)
+        else -> day.format(messageDateFormat)
+    }
 }
