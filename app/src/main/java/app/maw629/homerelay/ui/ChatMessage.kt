@@ -26,6 +26,19 @@ fun messageStatus(state: UploadState): MessageStatus = when (state) {
 private val messageTimeFormat = DateTimeFormatter.ofPattern("HH:mm")
 private val messageDateFormat = DateTimeFormatter.ofPattern("yyyy/MM/dd")
 
+fun formatFileSize(sizeBytes: Long): String {
+    val bytes = sizeBytes.coerceAtLeast(0L)
+    if (bytes < 1_000L) return "$bytes bytes"
+    val (divisor, unit) = when {
+        bytes < 1_000_000L -> 1_024.0 to "KB"
+        bytes < 1_000_000_000L -> 1_048_576.0 to "MB"
+        bytes < 1_000_000_000_000L -> 1_073_741_824.0 to "GB"
+        else -> 1_099_511_627_776.0 to "TB"
+    }
+    val text = String.format(Locale.ENGLISH, "%.2f", bytes / divisor).trimEnd('0').trimEnd('.')
+    return "$text $unit"
+}
+
 fun formatMessageTime(
     createdAtMillis: Long,
     nowMillis: Long = System.currentTimeMillis(),

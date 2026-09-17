@@ -90,4 +90,46 @@ class ChatMessageTest {
     fun futureTimestampShowsTimeOnly() {
         assertEquals("02:46", formatMessageTime(1_000_003_600_000L, 1_000_000_000_000L, ZoneId.of("UTC")))
     }
+
+    @Test
+    fun bytesBelowThresholdShowByteCount() {
+        assertEquals("0 bytes", formatFileSize(0L))
+        assertEquals("42 bytes", formatFileSize(42L))
+        assertEquals("999 bytes", formatFileSize(999L))
+    }
+
+    @Test
+    fun kilobytesBoundary() {
+        assertEquals("0.98 KB", formatFileSize(1_000L))
+        assertEquals("976.56 KB", formatFileSize(999_999L))
+    }
+
+    @Test
+    fun megabytesBoundary() {
+        assertEquals("0.95 MB", formatFileSize(1_000_000L))
+        assertEquals("0.99 MB", formatFileSize(1_038_336L))
+        assertEquals("953.67 MB", formatFileSize(999_999_999L))
+    }
+
+    @Test
+    fun gigabytesBoundary() {
+        assertEquals("0.93 GB", formatFileSize(1_000_000_000L))
+        assertEquals("2.33 GB", formatFileSize(2_500_000_000L))
+    }
+
+    @Test
+    fun terabytes() {
+        assertEquals("0.91 TB", formatFileSize(1_000_000_000_000L))
+    }
+
+    @Test
+    fun trailingZerosTrimmed() {
+        assertEquals("1 MB", formatFileSize(1_048_576L))
+        assertEquals("1.5 MB", formatFileSize(1_572_864L))
+    }
+
+    @Test
+    fun negativeSizeCoercedToZero() {
+        assertEquals("0 bytes", formatFileSize(-5L))
+    }
 }
